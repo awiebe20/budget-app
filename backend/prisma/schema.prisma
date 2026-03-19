@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id           Int           @id @default(autoincrement())
+  name          String
+  accountNumber String?
+  bank          BankSource?
+  type          AccountType
+  balance       Decimal       @default(0) @db.Decimal(10, 2)
+  currency      String        @default("USD")
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+  imports      ImportLog[]
+
+  @@map("accounts")
+}
+
+model Category {
+  id          Int           @id @default(autoincrement())
+  name        String        @unique
+  parentId    Int?
+  parent      Category?     @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[]    @relation("CategoryTree")
+  color       String?
+  isIncome    Boolean       @default(false)
+  transactions Transaction[]
+  budgets     Budget[]
+
+  @@map("categories")
+}
+
+model Transaction {
+  id                  Int                @id @default(autoincrement())
+  accountId           Int
+  account             Account            @relation(fields: [accountId], references: [id])
+  date                DateTime
+  amount              Decimal            @db.Decimal(10, 2)
+  merchantRaw         String
+  merchantNormalized  String
+  categoryId          Int?
+  category            Category?          @relation(fields: [categoryId], references: [id])
+  notes               String?
+  source              TransactionSource
+  fingerprint         String             @unique
+  isRecurring         Boolean            @default(false)
+  isInternalTransfer  Boolean            @default(false)
+  importId            Int?
+  import              ImportLog?         @relation(fields: [importId], references: [id])
+  splits              TransactionSplit[]
+  createdAt           DateTime           @default(now())
+
+  @@map("transactions")
+}
+
+model TransactionSplit {
+  id            Int         @id @default(autoincrement())
+  transactionId Int
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  amount        Decimal     @db.Decimal(10, 2)
+  owedBy        String
+  settlementId  Int?
+  settlement    Settlement? @relation(fields: [settlementId], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@map("transaction_splits")
+}
+
+model Settlement {
+  id          Int                @id @default(autoincrement())
+  person      String
+  amount      Decimal            @db.Decimal(10, 2)
+  periodStart DateTime
+  periodEnd   DateTime
+  settledDate DateTime
+  splits      TransactionSplit[]
+  createdAt   DateTime           @default(now())
+
+  @@map("settlements")
+}
+
+model Budget {
+  id         Int      @id @default(autoincrement())
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  amount     Decimal  @db.Decimal(10, 2)
+  month      Int
+  year       Int
+  createdAt  DateTime @default(now())
+
+  @@unique([categoryId, month, year])
+  @@map("budgets")
+}
+
+model SavingsGoal {
+  id            Int      @id @default(autoincrement())
+  name          String
+  targetAmount  Decimal  @db.Decimal(10, 2)
+  currentAmount Decimal  @default(0) @db.Decimal(10, 2)
+  targetDate    DateTime?
+  createdAt     DateTime @default(now())
+
+  @@map("savings_goals")
+}
+
+model ImportLog {
+  id               Int           @id @default(autoincrement())
+  accountId        Int
+  account          Account       @relation(fields: [accountId], references: [id])
+  source           TransactionSource
+  filename         String
+  importedAt       DateTime      @default(now())
+  transactionCount Int
+  duplicateCount   Int
+  status           ImportStatus
+  transactions     Transaction[]
+
+  @@map("import_logs")
+}
+
+enum BankSource {
+  CAPITAL_ONE
+  HERITAGE
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT
+}
+
+enum TransactionSource {
+  CSV
+  EMAIL
+}
+
+enum ImportStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
