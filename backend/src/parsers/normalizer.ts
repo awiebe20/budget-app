@@ -35,9 +35,9 @@ export function normalizeMerchant(raw: string): string {
   return normalized.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function generateFingerprint(date: Date, amount: number, merchantRaw: string): string {
-  const dateStr = date.toISOString().split('T')[0];
-  const amountStr = amount.toFixed(2);
-  const merchantStr = merchantRaw.toLowerCase().trim();
-  return Buffer.from(`${dateStr}|${amountStr}|${merchantStr}`).toString('base64');
+export function generateFingerprint(date: Date, amount: number, accountId: number): string {
+  const d = new Date(date);
+  const dateStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const amountStr = Math.abs(amount).toFixed(2);
+  return Buffer.from(`${accountId}|${dateStr}|${amountStr}`).toString('base64');
 }

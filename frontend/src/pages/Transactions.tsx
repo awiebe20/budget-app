@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { transactions, categories, accounts } from '../lib/api';
-import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: 'date_desc',   label: 'Newest first' },
@@ -34,13 +34,20 @@ export default function Transactions() {
   const [showFilters, setShowFilters] = useState(false);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
   const [draftDateRange, setDraftDateRange] = useState(defaultDateRange());
+  const [quickCategoryTxId, setQuickCategoryTxId] = useState<number | null>(null);
+  const [categorySearch, setCategorySearch] = useState('');
   const sortRef = useRef<HTMLDivElement>(null);
+  const categoryPickerRef = useRef<HTMLDivElement>(null);
 
-  // Close sort dropdown on outside click
+  // Close sort dropdown and category picker on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
         setShowSort(false);
+      }
+      if (categoryPickerRef.current && !categoryPickerRef.current.contains(e.target as Node)) {
+        setQuickCategoryTxId(null);
+        setCategorySearch('');
       }
     };
     document.addEventListener('mousedown', handler);
@@ -59,7 +66,9 @@ export default function Transactions() {
       if (search && ![tx.merchantNormalized, tx.merchantRaw, tx.notes, tx.memo]
         .filter(Boolean).some((f: string) => f.toLowerCase().includes(search))) return false;
       if (filters.accountId && tx.accountId !== parseInt(filters.accountId)) return false;
-      if (filters.categoryId && tx.categoryId !== parseInt(filters.categoryId)) return false;
+      if (filters.categoryId === '__uncategorized__') {
+        if (tx.categoryId != null) return false;
+      } else if (filters.categoryId && tx.categoryId !== parseInt(filters.categoryId)) return false;
       if (filters.minAmount && Math.abs(Number(tx.amount)) < parseFloat(filters.minAmount)) return false;
       if (filters.maxAmount && Math.abs(Number(tx.amount)) > parseFloat(filters.maxAmount)) return false;
       return true;
@@ -130,7 +139,7 @@ export default function Transactions() {
   };
 
   return (
-    <div className="flex gap-4 h-full">
+    <div className="flex gap-4 items-start">
       {/* Main list */}
       <div className="flex-1 min-w-0 space-y-4">
         <div className="flex items-center gap-3">
@@ -181,6 +190,20 @@ export default function Transactions() {
           </div>
         </div>
 
+        {/* Quick filters */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setFilters(f => ({ ...f, categoryId: f.categoryId === '__uncategorized__' ? '' : '__uncategorized__' }))}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs ${
+              filters.categoryId === '__uncategorized__'
+                ? 'bg-yellow-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Tag size={11} /> Uncategorized
+          </button>
+        </div>
+
         {/* Transaction list */}
         {isLoading ? (
           <p className="text-gray-500 text-sm">Loading...</p>
@@ -206,9 +229,51 @@ export default function Transactions() {
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-gray-500">{new Date(tx.date).toLocaleDateString()}</span>
                     <span className="text-xs text-gray-600">{tx.account?.name}</span>
-                    {tx.category && (
-                      <span className="text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">{tx.category.name}</span>
-                    )}
+                    <div className="relative" ref={quickCategoryTxId === tx.id ? categoryPickerRef : null}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setQuickCategoryTxId(quickCategoryTxId === tx.id ? null : tx.id); setCategorySearch(''); }}
+                        className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                          tx.category
+                            ? 'text-gray-300 bg-gray-800 hover:bg-gray-700'
+                            : 'text-gray-600 hover:text-gray-400'
+                        }`}
+                      >
+                        {tx.category ? tx.category.name : '+ category'}
+                      </button>
+                      {quickCategoryTxId === tx.id && (
+                        <div className="absolute left-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-30 w-48 py-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            autoFocus
+                            placeholder="Search..."
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            className="w-full bg-gray-700 text-white text-xs px-3 py-1.5 border-b border-gray-600 outline-none"
+                          />
+                          <div className="max-h-48 overflow-y-auto">
+                            {tx.category && (
+                              <button
+                                onClick={() => { updateMutation.mutate({ id: tx.id, data: { categoryId: null } }); setQuickCategoryTxId(null); }}
+                                className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-700 italic"
+                              >
+                                Remove category
+                              </button>
+                            )}
+                            {categoryList
+                              .filter((c: any) => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                              .map((c: any) => (
+                                <button
+                                  key={c.id}
+                                  onClick={() => { updateMutation.mutate({ id: tx.id, data: { categoryId: c.id } }); setQuickCategoryTxId(null); setCategorySearch(''); }}
+                                  className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 flex items-center gap-2"
+                                >
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color ?? '#6b7280' }} />
+                                  {c.name}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {tx.notes && (
                       <span className="text-xs text-gray-500 italic truncate">{tx.notes}</span>
                     )}
@@ -340,8 +405,7 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
   onAddSplit: (data: object) => void;
   onDeleteSplit: (splitId: number) => void;
 }) {
-  const [splitAmount, setSplitAmount] = useState('');
-  const [splitPerson, setSplitPerson] = useState('');
+  const [splitWays, setSplitWays] = useState('');
 
   const flatCategories = categoryList.flatMap((c: any) =>
     c.children?.length ? [c, ...c.children] : [c]
@@ -351,7 +415,7 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
   const yourPortion = Math.abs(Number(tx.amount)) - totalSplit;
 
   return (
-    <div className="w-80 shrink-0 bg-gray-900 rounded-lg p-5 space-y-5 overflow-y-auto">
+    <div className="w-80 shrink-0 bg-gray-900 rounded-lg p-5 space-y-5 overflow-y-auto overflow-x-hidden sticky top-4 self-start max-h-[calc(100vh-2.5rem)]">
       <div className="flex items-start justify-between">
         <div>
           <h3 className="font-semibold text-white">{tx.merchantNormalized}</h3>
@@ -416,7 +480,6 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
       </div>
 
       <div>
-        <label className="text-xs text-gray-400 block mb-2">Split</label>
         {tx.splits?.length > 0 && (
           <div className="space-y-1 mb-3">
             {tx.splits.map((s: any) => (
@@ -440,37 +503,38 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
             </div>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400 shrink-0">Split</span>
           <input
-            placeholder="Person"
-            value={splitPerson}
-            onChange={(e) => setSplitPerson(e.target.value)}
-            className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm flex-1"
-          />
-          <input
-            placeholder="$"
             type="number"
-            value={splitAmount}
-            onChange={(e) => setSplitAmount(e.target.value)}
-            className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm w-20"
+            min={2}
+            max={20}
+            placeholder="2"
+            value={splitWays}
+            onChange={(e) => setSplitWays(e.target.value)}
+            className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm w-14 shrink-0"
           />
+          <span className="text-xs text-gray-400 shrink-0">ways equally</span>
           <button
-            disabled={!splitPerson || !splitAmount}
+            disabled={!splitWays || parseInt(splitWays) < 2}
             onClick={() => {
-              onAddSplit({ amount: parseFloat(splitAmount), owedBy: splitPerson });
-              setSplitAmount('');
-              setSplitPerson('');
+              const ways = parseInt(splitWays);
+              const perPerson = parseFloat((Math.abs(Number(tx.amount)) / ways).toFixed(2));
+              for (let i = 1; i < ways; i++) {
+                onAddSplit({ amount: perPerson, owedBy: `Person ${i}` });
+              }
+              setSplitWays('');
             }}
-            className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white px-3 py-1.5 rounded text-sm"
+            className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white px-3 py-1.5 rounded text-sm shrink-0"
           >
-            Add
+            Split
           </button>
         </div>
       </div>
 
       <div className="border-t border-gray-800 pt-4">
-        <p className="text-xs text-gray-600">Raw: {tx.merchantRaw}</p>
-        {tx.memo && <p className="text-xs text-gray-600 mt-0.5">Memo: {tx.memo}</p>}
+        <p className="text-xs text-gray-600 break-words">Raw: {tx.merchantRaw}</p>
+        {tx.memo && <p className="text-xs text-gray-600 mt-0.5 break-words">Memo: {tx.memo}</p>}
       </div>
     </div>
   );

@@ -4,26 +4,32 @@ import { PrismaClient } from '@prisma/client';
 const router = Router();
 const prisma = new PrismaClient();
 
-// GET /api/budgets?month=3&year=2026
-router.get('/', async (req: Request, res: Response) => {
-  const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
-  const year = parseInt(req.query.year as string) || new Date().getFullYear();
+// Returns the current active budget for each category (latest effectiveFrom <= now)
+router.get('/', async (_req: Request, res: Response) => {
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
 
   const budgets = await prisma.budget.findMany({
-    where: { month, year },
+    where: { effectiveFrom: { lte: startOfMonth } },
+    orderBy: { effectiveFrom: 'desc' },
+    distinct: ['categoryId'],
     include: { category: true },
   });
 
   res.json(budgets);
 });
 
+// Upsert budget for the current month — creates a new record if amount changed
 router.post('/', async (req: Request, res: Response) => {
-  const { categoryId, amount, month, year } = req.body;
+  const { categoryId, amount } = req.body;
+  const now = new Date();
+  const effectiveFrom = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const budget = await prisma.budget.upsert({
-    where: { categoryId_month_year: { categoryId, month, year } },
+    where: { categoryId_effectiveFrom: { categoryId, effectiveFrom } },
     update: { amount },
-    create: { categoryId, amount, month, year },
+    create: { categoryId, amount, effectiveFrom },
   });
 
   res.json(budget);

@@ -44,7 +44,9 @@ router.get('/by-category', async (req: Request, res: Response) => {
       select: { amount: true, categoryId: true },
     }),
     prisma.budget.findMany({
-      where: { month, year },
+      where: { effectiveFrom: { lte: start } },
+      orderBy: { effectiveFrom: 'desc' },
+      distinct: ['categoryId'],
       include: { category: true },
     }),
   ]);

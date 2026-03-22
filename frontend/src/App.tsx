@@ -2,7 +2,7 @@ import { Routes, Route, NavLink } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Budget from './pages/Budget';
-import Accounts from './pages/Accounts';
+import Settings from './pages/Settings';
 import Savings from './pages/Savings';
 import Settlements from './pages/Settlements';
 import Import from './pages/Import';
@@ -12,11 +12,11 @@ const navItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/transactions', label: 'Transactions' },
   { to: '/budget', label: 'Budget' },
-  { to: '/accounts', label: 'Accounts' },
   { to: '/savings', label: 'Savings' },
   { to: '/settlements', label: 'Splits' },
   { to: '/import', label: 'Import' },
   { to: '/review', label: 'Review' },
+  { to: '/settings', label: 'Settings' },
 ];
 
 export default function App() {
@@ -49,7 +49,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/budget" element={<Budget />} />
-          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/savings" element={<Savings />} />
           <Route path="/settlements" element={<Settlements />} />
           <Route path="/import" element={<Import />} />

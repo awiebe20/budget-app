@@ -82,7 +82,7 @@ export default function Import() {
   };
 
   const importOne = async (fp: FilePreview) => {
-    if (!fp.accountId || !fp.preview || fp.preview.newCount === 0) return;
+    if (!fp.accountId || !fp.preview) return;
     updatePreview(fp.id, { status: 'loading' });
     try {
       const result = await imports.confirm(fp.file, parseInt(fp.accountId));
@@ -97,13 +97,13 @@ export default function Import() {
 
   const importAll = async () => {
     const ready = filePreviews.filter(
-      (fp) => fp.status === 'ready' && fp.accountId && fp.preview && fp.preview.newCount > 0
+      (fp) => fp.status === 'ready' && fp.accountId && fp.preview
     );
     for (const fp of ready) await importOne(fp);
   };
 
   const readyCount = filePreviews.filter(
-    (fp) => fp.status === 'ready' && fp.accountId && fp.preview && fp.preview.newCount > 0
+    (fp) => fp.status === 'ready' && fp.accountId && fp.preview
   ).length;
 
   return (
@@ -291,15 +291,15 @@ function FilePreviewCard({ fp, accountList, onRemove, onImport, onAccountChange 
             </div>
           )}
 
-          {fp.preview.newCount > 0 && (
-            <button
-              disabled={!fp.accountId}
-              onClick={onImport}
-              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm w-full"
-            >
-              Import {fp.preview.newCount} transactions
-            </button>
-          )}
+          <button
+            disabled={!fp.accountId}
+            onClick={onImport}
+            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm w-full"
+          >
+            {fp.preview.newCount > 0
+              ? `Import ${fp.preview.newCount} transactions`
+              : 'Update Balance'}
+          </button>
         </>
       )}
     </div>

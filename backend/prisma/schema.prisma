@@ -86,15 +86,14 @@ model Settlement {
 }
 
 model Budget {
-  id         Int      @id @default(autoincrement())
-  categoryId Int
-  category   Category @relation(fields: [categoryId], references: [id])
-  amount     Decimal  @db.Decimal(10, 2)
-  month      Int
-  year       Int
-  createdAt  DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  categoryId    Int
+  category      Category @relation(fields: [categoryId], references: [id])
+  amount        Decimal  @db.Decimal(10, 2)
+  effectiveFrom DateTime
+  createdAt     DateTime @default(now())
 
-  @@unique([categoryId, month, year])
+  @@unique([categoryId, effectiveFrom])
   @@map("budgets")
 }
 
@@ -124,9 +123,19 @@ model ImportLog {
   @@map("import_logs")
 }
 
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
 enum BankSource {
   CAPITAL_ONE
   HERITAGE
+  SIMPLEFIN
 }
 
 enum AccountType {
@@ -138,6 +147,7 @@ enum AccountType {
 enum TransactionSource {
   CSV
   EMAIL
+  SIMPLEFIN
 }
 
 enum ImportStatus {

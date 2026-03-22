@@ -42,7 +42,8 @@ router.post('/preview', upload.single('file'), async (req: Request, res: Respons
     const { transactions: parsed } = parseCSV(content, bank);
 
     // Check which fingerprints already exist
-    const fingerprints = parsed.map((t) => generateFingerprint(t.date, t.amount, t.merchantRaw));
+    const accountId = detectedAccountId ?? 0;
+    const fingerprints = parsed.map((t) => generateFingerprint(t.date, t.amount, accountId));
     const existing = await prisma.transaction.findMany({
       where: { fingerprint: { in: fingerprints } },
       select: { fingerprint: true },
@@ -51,7 +52,7 @@ router.post('/preview', upload.single('file'), async (req: Request, res: Respons
 
     const preview = parsed.map((t) => ({
       ...t,
-      isDuplicate: existingSet.has(generateFingerprint(t.date, t.amount, t.merchantRaw)),
+      isDuplicate: existingSet.has(generateFingerprint(t.date, t.amount, accountId)),
     }));
 
     res.json({
@@ -101,7 +102,7 @@ router.post('/confirm', upload.single('file'), async (req: Request, res: Respons
     let duplicates = 0;
 
     for (const t of parsed) {
-      const fingerprint = generateFingerprint(t.date, t.amount, t.merchantRaw);
+      const fingerprint = generateFingerprint(t.date, t.amount, accountId);
       const exists = await prisma.transaction.findUnique({ where: { fingerprint } });
 
       if (exists) {
@@ -131,6 +132,18 @@ router.post('/confirm', upload.single('file'), async (req: Request, res: Respons
       where: { id: importLog.id },
       data: { transactionCount: inserted, duplicateCount: duplicates },
     });
+
+    // Update account balance from the most recent transaction's balance value
+    const latestWithBalance = parsed
+      .filter((t) => t.balance !== null && t.balance !== undefined)
+      .sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+
+    if (latestWithBalance?.balance !== null && latestWithBalance?.balance !== undefined) {
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { balance: latestWithBalance.balance },
+      });
+    }
 
     res.json({ inserted, duplicates, importId: importLog.id });
   } catch (err: any) {

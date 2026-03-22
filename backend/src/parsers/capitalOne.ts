@@ -1,6 +1,6 @@
 import { parse } from 'csv-parse/sync';
 import { ParseResult } from './types';
-import { normalizeMerchant, generateFingerprint, parseLocalDate } from './normalizer';
+import { normalizeMerchant, parseLocalDate } from './normalizer';
 
 export function parseCapitalOneCSV(fileContent: string): ParseResult {
   const records = parse(fileContent, {
@@ -27,7 +27,6 @@ export function parseCapitalOneCSV(fileContent: string): ParseResult {
       merchantNormalized: normalizeMerchant(merchantRaw),
       memo: null,
       balance: row['Balance'] ? parseFloat(row['Balance']) : null,
-      fingerprint: generateFingerprint(date, amount, merchantRaw),
     };
   });
 

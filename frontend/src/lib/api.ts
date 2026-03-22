@@ -27,7 +27,7 @@ export const categories = {
 };
 
 export const budgets = {
-  list: (month: number, year: number) => api.get('/budgets', { params: { month, year } }).then((r) => r.data),
+  list: () => api.get('/budgets').then((r) => r.data),
   upsert: (data: object) => api.post('/budgets', data).then((r) => r.data),
 };
 
@@ -57,6 +57,16 @@ export const savings = {
   create: (data: object) => api.post('/savings', data).then((r) => r.data),
   update: (id: number, data: object) => api.patch(`/savings/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/savings/${id}`).then((r) => r.data),
+};
+
+export const simplefin = {
+  status: () => api.get('/simplefin/status').then((r) => r.data),
+  connect: (setupToken: string) => api.post('/simplefin/connect', { setupToken }).then((r) => r.data),
+  sync: () => api.post('/simplefin/sync').then((r) => r.data),
+};
+
+export const onboarding = {
+  status: () => api.get('/onboarding/status').then((r) => r.data),
 };
 
 export const reports = {

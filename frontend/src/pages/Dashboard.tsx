@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { reports, accounts, settlements } from '../lib/api';
+import { reports, accounts, settlements, onboarding } from '../lib/api';
+import { CheckCircle, Circle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
@@ -11,13 +14,47 @@ export default function Dashboard() {
   const { data: accountList } = useQuery({ queryKey: ['accounts'], queryFn: accounts.list });
   const { data: bills } = useQuery({ queryKey: ['upcoming-bills'], queryFn: reports.upcomingBills });
   const { data: pendingSplits } = useQuery({ queryKey: ['pending-splits'], queryFn: settlements.pending });
+  const { data: ob } = useQuery({ queryKey: ['onboarding'], queryFn: onboarding.status });
 
   const totalOwed = pendingSplits?.reduce((sum: number, p: any) => sum + p.total, 0) ?? 0;
   const totalBalance = accountList?.reduce((sum: number, a: any) => sum + Number(a.balance), 0) ?? 0;
 
+  const steps = [
+    { key: 'simpleFinConnected', label: 'Connect SimpleFIN', done: ob?.simpleFinConnected },
+    { key: 'accountsAdded', label: 'Add bank accounts', done: ob?.accountsAdded },
+    { key: 'firstSyncDone', label: 'Run first sync', done: ob?.firstSyncDone },
+    { key: 'categoriesSetUp', label: 'Set up categories', done: ob?.categoriesSetUp },
+    { key: 'budgetsSetUp', label: 'Set budget limits', done: ob?.budgetsSetUp },
+  ];
+  const allDone = steps.every((s) => s.done);
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Dashboard</h2>
+
+      {/* Onboarding checklist */}
+      {!allDone && ob && (
+        <div className="bg-gray-900 rounded-lg p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-300">Getting Started</h3>
+            <button onClick={() => navigate('/settings')} className="text-xs text-blue-400 hover:text-blue-300">
+              Go to Settings →
+            </button>
+          </div>
+          <div className="flex gap-6">
+            {steps.map((step) => (
+              <div key={step.key} className="flex items-center gap-2">
+                {step.done
+                  ? <CheckCircle size={14} className="text-green-400 shrink-0" />
+                  : <Circle size={14} className="text-gray-600 shrink-0" />}
+                <span className={`text-xs ${step.done ? 'text-gray-500 line-through' : 'text-gray-300'}`}>
+                  {step.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Top stats */}
       <div className="grid grid-cols-4 gap-4">
