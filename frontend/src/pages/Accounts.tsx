@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { accounts } from '../lib/api';
-import { Trash2 } from 'lucide-react';
+import { Trash2, AlertTriangle } from 'lucide-react';
+
+function staleDays(balanceDate: string | null): number | null {
+  if (!balanceDate) return null;
+  return Math.floor((Date.now() - new Date(balanceDate).getTime()) / (1000 * 60 * 60 * 24));
+}
 
 const ACCOUNT_TYPES = ['CHECKING', 'SAVINGS', 'CREDIT'];
 
@@ -119,14 +124,26 @@ export default function Accounts() {
           {accountList?.map((account: any) => (
             <div key={account.id} className="group bg-gray-900 rounded-lg p-4 flex items-center justify-between">
               <div>
-                <p className="font-medium text-white">{account.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-white">{account.name}</p>
+                  {(() => {
+                    const days = staleDays(account.balanceDate);
+                    if (days === null || days < 3) return null;
+                    return (
+                      <span className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded ${days >= 7 ? 'bg-red-900/50 text-red-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
+                        <AlertTriangle size={10} />
+                        {days}d stale
+                      </span>
+                    );
+                  })()}
+                </div>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {account.type.charAt(0) + account.type.slice(1).toLowerCase()}
                   {account.bank && ` · ${account.bank === 'CAPITAL_ONE' ? 'Capital One' : 'Heritage'}`}
                   {account.accountNumber && `  ····${account.accountNumber.slice(-4)}`}
-                  {account.lastImportedAt && (
+                  {account.balanceDate && (
                     <span className="block mt-0.5 text-gray-600">
-                      Last updated {new Date(account.lastImportedAt).toLocaleDateString()}
+                      Balance as of {new Date(account.balanceDate).toLocaleDateString()}
                     </span>
                   )}
                 </p>

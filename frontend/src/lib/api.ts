@@ -16,6 +16,7 @@ export const transactions = {
   list: (params?: object) => api.get('/transactions', { params }).then((r) => r.data),
   update: (id: number, data: object) => api.patch(`/transactions/${id}`, data).then((r) => r.data),
   addSplit: (id: number, data: object) => api.post(`/transactions/${id}/splits`, data).then((r) => r.data),
+  updateSplit: (id: number, splitId: number, data: object) => api.patch(`/transactions/${id}/splits/${splitId}`, data).then((r) => r.data),
   deleteSplit: (id: number, splitId: number) => api.delete(`/transactions/${id}/splits/${splitId}`).then((r) => r.data),
 };
 

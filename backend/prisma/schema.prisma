@@ -8,14 +8,16 @@ datasource db {
 }
 
 model Account {
-  id           Int           @id @default(autoincrement())
+  id            Int           @id @default(autoincrement())
   name          String
   accountNumber String?
+  simplefinId   String?       @unique
   bank          BankSource?
   type          AccountType
   balance       Decimal       @default(0) @db.Decimal(10, 2)
+  balanceDate   DateTime?
   currency      String        @default("USD")
-  createdAt    DateTime      @default(now())
+  createdAt     DateTime      @default(now())
   transactions Transaction[]
   imports      ImportLog[]
 
@@ -86,12 +88,13 @@ model Settlement {
 }
 
 model Budget {
-  id            Int      @id @default(autoincrement())
+  id            Int             @id @default(autoincrement())
   categoryId    Int
-  category      Category @relation(fields: [categoryId], references: [id])
-  amount        Decimal  @db.Decimal(10, 2)
+  category      Category        @relation(fields: [categoryId], references: [id])
+  amount        Decimal         @db.Decimal(10, 2)
+  frequency     BudgetFrequency @default(MONTHLY)
   effectiveFrom DateTime
-  createdAt     DateTime @default(now())
+  createdAt     DateTime        @default(now())
 
   @@unique([categoryId, effectiveFrom])
   @@map("budgets")

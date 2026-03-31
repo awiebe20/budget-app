@@ -76,12 +76,39 @@ router.post('/:id/splits', async (req: Request, res: Response) => {
   res.json(split);
 });
 
+// PATCH /api/transactions/:id/splits/:splitId
+router.patch('/:id/splits/:splitId', async (req: Request, res: Response) => {
+  const { owedBy } = req.body;
+  const split = await prisma.transactionSplit.update({
+    where: { id: parseInt(req.params.splitId) },
+    data: { ...(owedBy !== undefined && { owedBy }) },
+  });
+  res.json(split);
+});
+
 // DELETE /api/transactions/:id/splits/:splitId
 router.delete('/:id/splits/:splitId', async (req: Request, res: Response) => {
+  const txId = parseInt(req.params.id);
+
   await prisma.transactionSplit.delete({
     where: { id: parseInt(req.params.splitId) },
   });
-  res.json({ success: true });
+
+  // Rebalance remaining splits evenly
+  const [remaining, tx] = await Promise.all([
+    prisma.transactionSplit.findMany({ where: { transactionId: txId } }),
+    prisma.transaction.findUnique({ where: { id: txId }, select: { amount: true } }),
+  ]);
+
+  if (remaining.length > 0 && tx) {
+    const perPerson = parseFloat((Math.abs(Number(tx.amount)) / (remaining.length + 1)).toFixed(2));
+    await Promise.all(remaining.map(s =>
+      prisma.transactionSplit.update({ where: { id: s.id }, data: { amount: perPerson } })
+    ));
+  }
+
+  const updatedSplits = await prisma.transactionSplit.findMany({ where: { transactionId: txId } });
+  res.json({ splits: updatedSplits });
 });
 
 export default router;

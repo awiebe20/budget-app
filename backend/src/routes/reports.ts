@@ -15,16 +15,21 @@ router.get('/summary', async (req: Request, res: Response) => {
 
   const transactions = await prisma.transaction.findMany({
     where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-    select: { amount: true },
+    select: { amount: true, splits: { select: { amount: true } } },
   });
+
+  const effectiveAmount = (t: { amount: any, splits: { amount: any }[] }) => {
+    const splitTotal = t.splits.reduce((s, sp) => s + Number(sp.amount), 0);
+    return Number(t.amount) + (Number(t.amount) < 0 ? splitTotal : -splitTotal);
+  };
 
   const income = transactions
     .filter((t) => Number(t.amount) > 0)
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + effectiveAmount(t), 0);
 
   const expenses = transactions
     .filter((t) => Number(t.amount) < 0)
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + effectiveAmount(t), 0);
 
   res.json({ month, year, income, expenses, net: income + expenses });
 });
@@ -41,7 +46,7 @@ router.get('/by-category', async (req: Request, res: Response) => {
   const [transactions, budgets] = await Promise.all([
     prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false, categoryId: { not: null } },
-      select: { amount: true, categoryId: true },
+      select: { amount: true, categoryId: true, splits: { select: { amount: true } } },
     }),
     prisma.budget.findMany({
       where: { effectiveFrom: { lte: start } },
@@ -51,11 +56,13 @@ router.get('/by-category', async (req: Request, res: Response) => {
     }),
   ]);
 
-  // Sum spending per category
+  // Sum spending per category using your portion only
   const spendingMap: Record<number, number> = {};
   for (const t of transactions) {
     if (t.categoryId) {
-      spendingMap[t.categoryId] = (spendingMap[t.categoryId] || 0) + Number(t.amount);
+      const splitTotal = t.splits.reduce((s, sp) => s + Number(sp.amount), 0);
+      const portion = Number(t.amount) + splitTotal; // amount is negative, splitTotal is positive
+      spendingMap[t.categoryId] = (spendingMap[t.categoryId] || 0) + portion;
     }
   }
 
@@ -86,16 +93,21 @@ router.get('/trend', async (req: Request, res: Response) => {
 
     const transactions = await prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-      select: { amount: true },
+      select: { amount: true, splits: { select: { amount: true } } },
     });
+
+    const effectiveAmt = (t: { amount: any, splits: { amount: any }[] }) => {
+      const splitTotal = t.splits.reduce((s, sp) => s + Number(sp.amount), 0);
+      return Number(t.amount) + (Number(t.amount) < 0 ? splitTotal : -splitTotal);
+    };
 
     const income = transactions
       .filter((t) => Number(t.amount) > 0)
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((sum, t) => sum + effectiveAmt(t), 0);
 
     const expenses = transactions
       .filter((t) => Number(t.amount) < 0)
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((sum, t) => sum + effectiveAmt(t), 0);
 
     results.push({ month, year, income, expenses, net: income + expenses });
   }

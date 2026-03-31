@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { transactions, categories, accounts } from '../lib/api';
-import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag } from 'lucide-react';
+import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag, ChevronDown } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: 'date_desc',   label: 'Newest first' },
@@ -105,13 +105,28 @@ export default function Transactions() {
   const addSplitMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: object }) =>
       transactions.addSplit(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
+    onSuccess: (newSplit) => {
+      setSelected((prev: any) => prev ? { ...prev, splits: [...(prev.splits ?? []), newSplit] } : prev);
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+
+  const updateSplitMutation = useMutation({
+    mutationFn: ({ id, splitId, data }: { id: number; splitId: number; data: object }) =>
+      transactions.updateSplit(id, splitId, data),
+    onSuccess: (updated) => {
+      setSelected((prev: any) => prev ? { ...prev, splits: prev.splits.map((s: any) => s.id === updated.id ? { ...s, ...updated } : s) } : prev);
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+    },
   });
 
   const deleteSplitMutation = useMutation({
     mutationFn: ({ id, splitId }: { id: number; splitId: number }) =>
       transactions.deleteSplit(id, splitId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions'] }),
+    onSuccess: (result) => {
+      setSelected((prev: any) => prev ? { ...prev, splits: result.splits } : prev);
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+    },
   });
 
   const activeFilterCount = Object.entries(filters).filter(([k, v]) => k !== 'search' && v !== '').length;
@@ -279,9 +294,21 @@ export default function Transactions() {
                     )}
                   </div>
                 </div>
-                <span className={`text-sm font-medium shrink-0 ${Number(tx.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                  {Number(tx.amount) < 0 ? '-' : '+'}${Math.abs(Number(tx.amount)).toFixed(2)}
-                </span>
+                {(() => {
+                  const full = Math.abs(Number(tx.amount));
+                  const splitTotal = tx.splits?.reduce((s: number, sp: any) => s + Number(sp.amount), 0) ?? 0;
+                  const display = splitTotal > 0 ? full - splitTotal : full;
+                  return (
+                    <div className="text-right shrink-0">
+                      <span className={`text-sm font-medium ${Number(tx.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        {Number(tx.amount) < 0 ? '-' : '+'}${display.toFixed(2)}
+                      </span>
+                      {splitTotal > 0 && (
+                        <p className="text-xs text-gray-600 leading-none mt-0.5">of ${full.toFixed(2)}</p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -291,11 +318,13 @@ export default function Transactions() {
       {/* Detail panel */}
       {selected && (
         <TransactionDetail
+          key={selected.id}
           tx={selected}
           categoryList={categoryList}
           onClose={() => setSelected(null)}
           onUpdate={(data) => updateMutation.mutate({ id: selected.id, data })}
-          onAddSplit={(data) => addSplitMutation.mutate({ id: selected.id, data })}
+          onAddSplit={(data) => addSplitMutation.mutateAsync({ id: selected.id, data })}
+          onUpdateSplit={(splitId, data) => updateSplitMutation.mutate({ id: selected.id, splitId, data })}
           onDeleteSplit={(splitId) => deleteSplitMutation.mutate({ id: selected.id, splitId })}
         />
       )}
@@ -397,15 +426,45 @@ export default function Transactions() {
   );
 }
 
-function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, onDeleteSplit }: {
+function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, onUpdateSplit, onDeleteSplit }: {
   tx: any;
   categoryList: any[];
   onClose: () => void;
   onUpdate: (data: object) => void;
-  onAddSplit: (data: object) => void;
+  onAddSplit: (data: object) => Promise<any>;
+  onUpdateSplit: (splitId: number, data: object) => void;
   onDeleteSplit: (splitId: number) => void;
 }) {
   const [splitWays, setSplitWays] = useState('');
+  const [customAmount, setCustomAmount] = useState('');
+  const [showSplitOptions, setShowSplitOptions] = useState(false);
+  const [splitDropdownCoords, setSplitDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+  const splitDropdownRef = useRef<HTMLDivElement>(null);
+  const splitListRef = useRef<HTMLDivElement>(null);
+  const [editingNameId, setEditingNameId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        !splitDropdownRef.current?.contains(t) &&
+        !splitListRef.current?.contains(t)
+      ) {
+        setShowSplitOptions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const openSplitDropdown = () => {
+    if (!showSplitOptions && splitDropdownRef.current) {
+      const rect = splitDropdownRef.current.getBoundingClientRect();
+      setSplitDropdownCoords({ top: rect.bottom + 4, left: rect.left });
+    }
+    setShowSplitOptions(s => !s);
+  };
 
   const flatCategories = categoryList.flatMap((c: any) =>
     c.children?.length ? [c, ...c.children] : [c]
@@ -484,7 +543,23 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
           <div className="space-y-1 mb-3">
             {tx.splits.map((s: any) => (
               <div key={s.id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-300">{s.owedBy}</span>
+                {editingNameId === s.id ? (
+                  <input
+                    autoFocus
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => { onUpdateSplit(s.id, { owedBy: editingName || s.owedBy }); setEditingNameId(null); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { onUpdateSplit(s.id, { owedBy: editingName || s.owedBy }); setEditingNameId(null); } if (e.key === 'Escape') setEditingNameId(null); }}
+                    className="bg-gray-700 text-white rounded px-1.5 py-0.5 text-sm w-28"
+                  />
+                ) : (
+                  <button
+                    onClick={() => { setEditingNameId(s.id); setEditingName(s.owedBy); }}
+                    className="text-gray-300 hover:text-white hover:underline text-left"
+                  >
+                    {s.owedBy}
+                  </button>
+                )}
                 <div className="flex items-center gap-2">
                   <span className="text-yellow-400">${Number(s.amount).toFixed(2)}</span>
                   {!s.settlement ? (
@@ -505,30 +580,87 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
         )}
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400 shrink-0">Split</span>
-          <input
-            type="number"
-            min={2}
-            max={20}
-            placeholder="2"
-            value={splitWays}
-            onChange={(e) => setSplitWays(e.target.value)}
-            className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm w-14 shrink-0"
-          />
-          <span className="text-xs text-gray-400 shrink-0">ways equally</span>
-          <button
-            disabled={!splitWays || parseInt(splitWays) < 2}
-            onClick={() => {
-              const ways = parseInt(splitWays);
-              const perPerson = parseFloat((Math.abs(Number(tx.amount)) / ways).toFixed(2));
-              for (let i = 1; i < ways; i++) {
-                onAddSplit({ amount: perPerson, owedBy: `Person ${i}` });
-              }
-              setSplitWays('');
-            }}
-            className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white px-3 py-1.5 rounded text-sm shrink-0"
-          >
-            Split
-          </button>
+          <div className="relative shrink-0" ref={splitDropdownRef}>
+            <button
+              onClick={openSplitDropdown}
+              className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm flex items-center gap-1.5 min-w-[6.5rem]"
+            >
+              {splitWays === 'custom' ? (
+                <input
+                  autoFocus
+                  type="number"
+                  placeholder="$0.00"
+                  min="0"
+                  step="0.01"
+                  value={customAmount}
+                  onChange={(e) => setCustomAmount(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-transparent text-white text-sm w-16 outline-none"
+                />
+              ) : (
+                <span className="flex-1 text-left text-sm">
+                  {splitWays ? `${splitWays} ways` : '— ways'}
+                </span>
+              )}
+              <ChevronDown size={13} className="text-gray-400 shrink-0" />
+            </button>
+            {showSplitOptions && splitDropdownCoords && (
+              <div
+                ref={splitListRef}
+                style={{ position: 'fixed', top: splitDropdownCoords.top, left: splitDropdownCoords.left }}
+                className="bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50 py-1 w-32"
+              >
+                <button
+                  onClick={() => { setSplitWays(''); setCustomAmount(''); setShowSplitOptions(false); }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700"
+                >
+                  — ways
+                </button>
+                {[2,3,4,5,6,7,8,9,10].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => { setSplitWays(String(n)); setShowSplitOptions(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 ${splitWays === String(n) ? 'text-white' : 'text-gray-300'}`}
+                  >
+                    {n} ways
+                  </button>
+                ))}
+                <button
+                  onClick={() => { setSplitWays('custom'); setShowSplitOptions(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-700 border-t border-gray-700 ${splitWays === 'custom' ? 'text-white' : 'text-gray-300'}`}
+                >
+                  Custom $
+                </button>
+              </div>
+            )}
+          </div>
+          {splitWays && splitWays !== 'custom' && !tx.splits?.length && (
+            <button
+              onClick={async () => {
+                const ways = parseInt(splitWays);
+                const perPerson = parseFloat((Math.abs(Number(tx.amount)) / ways).toFixed(2));
+                for (let i = 1; i < ways; i++) {
+                  await onAddSplit({ amount: perPerson, owedBy: `Person ${i}` });
+                }
+                setSplitWays('');
+              }}
+              className="bg-blue-500 hover:bg-blue-400 text-white px-3 py-1.5 rounded text-sm shrink-0"
+            >
+              Split
+            </button>
+          )}
+          {splitWays === 'custom' && (
+            <button
+              disabled={!customAmount || parseFloat(customAmount) <= 0}
+              onClick={async () => {
+                await onAddSplit({ amount: parseFloat(customAmount), owedBy: 'Person' });
+                setCustomAmount('');
+              }}
+              className="bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white px-3 py-1.5 rounded text-sm shrink-0"
+            >
+              Split
+            </button>
+          )}
         </div>
       </div>
 

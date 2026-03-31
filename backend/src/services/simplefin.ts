@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { PrismaClient } from '@prisma/client';
-import { generateFingerprint, normalizeMerchant } from '../parsers/normalizer';
+import { normalizeMerchant } from '../parsers/normalizer';
 
 const prisma = new PrismaClient();
 
@@ -54,8 +54,17 @@ export async function fetchSimplefinData(startDate?: Date): Promise<SimplefinAcc
   const url = new URL(`${accessUrl}/accounts`);
   url.searchParams.set('start-date', String(startTs));
 
+  console.log(`[SimpleFIN] Requesting: start-date=${startTs} (${start.toISOString()})`);
+
   const response = await axios.get(url.toString());
-  return response.data.accounts as SimplefinAccount[];
+  const accounts = response.data.accounts as SimplefinAccount[];
+
+  for (const acct of accounts) {
+    const dates = acct.transactions.map(t => new Date(t.posted * 1000).toISOString().split('T')[0]).sort();
+    console.log(`[SimpleFIN] Account "${acct.name}": balance=${acct.balance}, transactions=${acct.transactions.length}, range=${dates[0] ?? 'none'} → ${dates[dates.length - 1] ?? 'none'}`);
+  }
+
+  return accounts;
 }
 
 export function normalizeSimplefinTransaction(tx: SimplefinTransaction, accountId: number) {
@@ -75,7 +84,7 @@ export function normalizeSimplefinTransaction(tx: SimplefinTransaction, accountI
     merchantNormalized,
     notes: tx.memo ?? null,
     source: 'SIMPLEFIN' as const,
-    fingerprint: generateFingerprint(localDate, amount, accountId),
+    fingerprint: Buffer.from(`simplefin|${tx.id}`).toString('base64'),
   };
 }
 
