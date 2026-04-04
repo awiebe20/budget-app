@@ -1,0 +1,56 @@
+{
+  "name": "budget-app",
+  "version": "1.0.0",
+  "description": "Personal budget tracker",
+  "main": "electron/main.js",
+  "scripts": {
+    "electron": "electron .",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:backend && npm run build:frontend",
+    "dist": "npm run build:all && electron-builder",
+    "dist:dir": "npm run build:all && electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.budgetapp.app",
+    "productName": "Budget App",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "extraResources": [
+      {
+        "from": "backend/dist",
+        "to": "backend/dist"
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "backend/node_modules"
+      },
+      {
+        "from": "backend/prisma",
+        "to": "backend/prisma"
+      },
+      {
+        "from": "electron/blank.db",
+        "to": "blank.db"
+      }
+    ],
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "electron/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true
+    }
+  }
+}

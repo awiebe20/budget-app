@@ -25,7 +25,7 @@ router.get('/summary', async (req: Request, res: Response) => {
   const [transactions, shiftedIncome] = await Promise.all([
     prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-      select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } } },
+      select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true } } },
     }),
     nextMonthCatIds.size > 0
       ? prisma.transaction.findMany({
@@ -34,7 +34,7 @@ router.get('/summary', async (req: Request, res: Response) => {
             isInternalTransfer: false,
             categoryId: { in: [...nextMonthCatIds] },
           },
-          select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } } },
+          select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true } } },
         })
       : Promise.resolve([]),
   ]);
@@ -51,7 +51,7 @@ router.get('/summary', async (req: Request, res: Response) => {
   ].reduce((sum, t) => sum + effectiveAmount(t), 0);
 
   const expenses = transactions
-    .filter((t) => Number(t.amount) < 0)
+    .filter((t) => Number(t.amount) < 0 && !t.category?.isFromSavings)
     .reduce((sum, t) => sum + effectiveAmount(t), 0);
 
   res.json({ month, year, income, expenses, net: income + expenses });
@@ -154,7 +154,7 @@ router.get('/trend', async (req: Request, res: Response) => {
 
     const transactions = await prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-      select: { amount: true, reimbursedBy: true, splits: { select: { amount: true } } },
+      select: { amount: true, reimbursedBy: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true } } },
     });
 
     const effectiveAmt = (t: { amount: any, splits: { amount: any }[] }) => {
@@ -167,7 +167,7 @@ router.get('/trend', async (req: Request, res: Response) => {
       .reduce((sum, t) => sum + effectiveAmt(t), 0);
 
     const expenses = transactions
-      .filter((t) => Number(t.amount) < 0)
+      .filter((t) => Number(t.amount) < 0 && !t.category?.isFromSavings)
       .reduce((sum, t) => sum + effectiveAmt(t), 0);
 
     results.push({ month, year, income, expenses, net: income + expenses });
@@ -189,7 +189,7 @@ router.get('/category-totals', async (req: Request, res: Response) => {
       date: { gte: start, lte: end },
       isInternalTransfer: false,
       amount: { lt: 0 },
-      category: { isReimbursement: false },
+      category: { isReimbursement: false, isFromSavings: false },
       categoryId: { not: null },
     },
     select: {

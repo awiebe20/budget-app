@@ -511,7 +511,11 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
             onChange={(e) => {
               const newCatId = e.target.value ? parseInt(e.target.value) : null;
               const newCat = flatCategories.find((c: any) => c.id === newCatId);
-              onUpdate({ categoryId: newCatId, ...(!newCat?.isReimbursement && { reimbursedBy: null }) });
+              onUpdate({
+                categoryId: newCatId,
+                ...(!newCat?.isReimbursement && { reimbursedBy: null }),
+                ...(!newCat?.isFromSavings && { savingsGoalId: null }),
+              });
             }}
             className="bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full"
           >
@@ -538,15 +542,15 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
             </select>
           </div>
         )}
-        {Number(tx.amount) < 0 && savingsGoals.length > 0 && (
+        {flatCategories.find((c: any) => c.id === tx.categoryId)?.isFromSavings && savingsGoals.length > 0 && (
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Savings Goal</label>
+            <label className="text-xs text-gray-400 block mb-1">From which goal?</label>
             <select
               value={tx.savingsGoalId ?? ''}
               onChange={(e) => onUpdate({ savingsGoalId: e.target.value ? parseInt(e.target.value) : null })}
               className="bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full"
             >
-              <option value="">None</option>
+              <option value="">Select goal...</option>
               {savingsGoals.map((g: any) => (
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}

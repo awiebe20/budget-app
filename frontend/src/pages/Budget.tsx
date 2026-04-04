@@ -52,7 +52,7 @@ export default function Budget() {
   const [editColorValue, setEditColorValue] = useState(CATEGORY_COLORS[0]);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({ preset: '', customName: '', color: CATEGORY_COLORS[0], isIncome: false, budgetAmount: '', frequency: 'MONTHLY' as 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' });
+  const [categoryForm, setCategoryForm] = useState({ preset: '', customName: '', color: CATEGORY_COLORS[0], isIncome: false, isReimbursement: false, budgetAmount: '', frequency: 'MONTHLY' as 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' });
 
   const selectedPreset = PRESET_CATEGORIES.find((p) => p.name === categoryForm.preset);
   const isCustom = categoryForm.preset === '__custom__';
@@ -149,8 +149,8 @@ export default function Budget() {
   const currentBudgetMap: Record<number, { amount: number; frequency: string }> = {};
   budgetList?.forEach((b: any) => { currentBudgetMap[b.categoryId] = { amount: Number(b.amount), frequency: b.frequency ?? 'MONTHLY' }; });
 
-  const incomeCategories = categoryList?.filter((c: any) => c.isIncome && !c.isReimbursement) ?? [];
-  const expenseCategories = categoryList?.filter((c: any) => !c.isIncome && !c.isReimbursement) ?? [];
+  const incomeCategories = categoryList?.filter((c: any) => c.isIncome && !c.isReimbursement && !c.isFromSavings) ?? [];
+  const expenseCategories = categoryList?.filter((c: any) => !c.isIncome && !c.isReimbursement && !c.isFromSavings) ?? [];
 
   const expectedIncome = incomeCategories.reduce((sum: number, c: any) => sum + (historicalBudgetMap[c.id] ?? 0), 0);
   const actualIncome = summary?.income ?? 0;
@@ -559,7 +559,7 @@ export default function Budget() {
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={budgetedPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
-                  {budgetedPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  {budgetedPieData.map((entry: { color: string }, i: number) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#111827', border: 'none', fontSize: 12 }} />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
@@ -571,7 +571,7 @@ export default function Budget() {
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={spentPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
-                  {spentPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  {spentPieData.map((entry: { color: string }, i: number) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#111827', border: 'none', fontSize: 12 }} />
                 <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />

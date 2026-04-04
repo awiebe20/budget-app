@@ -22,9 +22,14 @@ async function seedRequiredCategories() {
     update: {},
     create: { name: 'Reimbursement', color: '#34d399', isIncome: false, isReimbursement: true },
   });
+  await prisma.category.upsert({
+    where: { name: 'From Savings' },
+    update: {},
+    create: { name: 'From Savings', color: '#818cf8', isIncome: false, isFromSavings: true },
+  });
 }
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors({ origin: true }));
 app.use(express.json());
 
 app.use('/api/transactions', transactionRoutes);

@@ -3,3 +3,13 @@ node_modules
 dist
 build
 *.local
+
+# SQLite databases (user data) — keep blank.db for Electron first-run setup
+*.db
+!electron/blank.db
+
+# Migration export (contains personal financial data)
+backend/migration-data.json
+
+# Electron build output
+dist-electron/
