@@ -18,6 +18,8 @@ export const transactions = {
   addSplit: (id: number, data: object) => api.post(`/transactions/${id}/splits`, data).then((r) => r.data),
   updateSplit: (id: number, splitId: number, data: object) => api.patch(`/transactions/${id}/splits/${splitId}`, data).then((r) => r.data),
   deleteSplit: (id: number, splitId: number) => api.delete(`/transactions/${id}/splits/${splitId}`).then((r) => r.data),
+  people: () => api.get('/transactions/people').then((r) => r.data),
+  internalTransfers: () => api.get('/transactions/internal-transfers').then((r) => r.data),
 };
 
 export const categories = {
@@ -58,6 +60,7 @@ export const savings = {
   create: (data: object) => api.post('/savings', data).then((r) => r.data),
   update: (id: number, data: object) => api.patch(`/savings/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/savings/${id}`).then((r) => r.data),
+  goals: () => api.get('/savings').then((r) => r.data),
 };
 
 export const simplefin = {
@@ -74,5 +77,7 @@ export const reports = {
   summary: (month: number, year: number) => api.get('/reports/summary', { params: { month, year } }).then((r) => r.data),
   byCategory: (month: number, year: number) => api.get('/reports/by-category', { params: { month, year } }).then((r) => r.data),
   trend: (months: number) => api.get('/reports/trend', { params: { months } }).then((r) => r.data),
+  categoryTotals: (months: number) => api.get('/reports/category-totals', { params: { months } }).then((r) => r.data),
+  netWorth: (months: number) => api.get('/reports/net-worth', { params: { months } }).then((r) => r.data),
   upcomingBills: () => api.get('/reports/upcoming-bills').then((r) => r.data),
 };

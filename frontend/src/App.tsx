@@ -1,26 +1,25 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
+import { MonthProvider } from './lib/MonthContext';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Budget from './pages/Budget';
 import Settings from './pages/Settings';
 import Savings from './pages/Savings';
 import Settlements from './pages/Settlements';
-import Import from './pages/Import';
-import CategoryReview from './pages/CategoryReview';
+import Analytics from './pages/Analytics';
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/transactions', label: 'Transactions' },
   { to: '/budget', label: 'Budget' },
   { to: '/savings', label: 'Savings' },
-  { to: '/settlements', label: 'Splits' },
-  { to: '/import', label: 'Import' },
-  { to: '/review', label: 'Review' },
+  { to: '/analytics', label: 'Analytics' },
   { to: '/settings', label: 'Settings' },
 ];
 
 export default function App() {
   return (
+    <MonthProvider>
     <div className="flex h-screen">
       {/* Sidebar */}
       <nav className="w-48 bg-gray-900 flex flex-col p-4 gap-1 shrink-0">
@@ -52,10 +51,10 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/savings" element={<Savings />} />
           <Route path="/settlements" element={<Settlements />} />
-          <Route path="/import" element={<Import />} />
-          <Route path="/review" element={<CategoryReview />} />
+          <Route path="/analytics" element={<Analytics />} />
         </Routes>
       </main>
     </div>
+    </MonthProvider>
   );
 }

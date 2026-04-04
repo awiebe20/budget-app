@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { accounts } from '../lib/api';
+import { fmt } from '../lib/format';
 import { Trash2, AlertTriangle } from 'lucide-react';
 
 function staleDays(balanceDate: string | null): number | null {
@@ -150,7 +151,7 @@ export default function Accounts() {
               </div>
               <div className="flex items-center gap-3">
                 <span className={`text-lg font-semibold ${Number(account.balance) < 0 ? 'text-red-400' : 'text-white'}`}>
-                  ${Number(account.balance).toFixed(2)}
+                  ${fmt(Number(account.balance))}
                 </span>
                 {confirmDelete === account.id ? (
                   <div className="flex items-center gap-2 text-xs">
@@ -191,7 +192,7 @@ export default function Accounts() {
         <div className="border-t border-gray-800 pt-4 flex justify-between text-sm">
           <span className="text-gray-400">Total Balance</span>
           <span className={`font-semibold ${totalBalance < 0 ? 'text-red-400' : 'text-white'}`}>
-            ${totalBalance.toFixed(2)}
+            ${fmt(totalBalance)}
           </span>
         </div>
       )}

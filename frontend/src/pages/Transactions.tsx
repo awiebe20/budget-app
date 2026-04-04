@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { transactions, categories, accounts } from '../lib/api';
+import { transactions, categories, accounts, savings } from '../lib/api';
+import { fmt } from '../lib/format';
+import { useMonthContext } from '../lib/MonthContext';
 import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag, ChevronDown } from 'lucide-react';
 
 const SORT_OPTIONS = [
@@ -29,11 +31,11 @@ export default function Transactions() {
   const [selected, setSelected] = useState<any>(null);
   const [sort, setSort] = useState('date_desc');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [dateRange, setDateRange] = useState(defaultDateRange());
+  const { dateRange, setDateRange } = useMonthContext();
   const [showSort, setShowSort] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
-  const [draftDateRange, setDraftDateRange] = useState(defaultDateRange());
+  const [draftDateRange, setDraftDateRange] = useState(dateRange);
   const [quickCategoryTxId, setQuickCategoryTxId] = useState<number | null>(null);
   const [categorySearch, setCategorySearch] = useState('');
   const sortRef = useRef<HTMLDivElement>(null);
@@ -130,6 +132,7 @@ export default function Transactions() {
   });
 
   const activeFilterCount = Object.entries(filters).filter(([k, v]) => k !== 'search' && v !== '').length;
+  const uncategorizedCount = rawList.filter((tx: any) => tx.categoryId == null).length;
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label;
 
   const applyFilters = () => {
@@ -216,6 +219,11 @@ export default function Transactions() {
             }`}
           >
             <Tag size={11} /> Uncategorized
+            {uncategorizedCount > 0 && (
+              <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium ${filters.categoryId === '__uncategorized__' ? 'bg-yellow-500 text-white' : 'bg-gray-700 text-gray-300'}`}>
+                {uncategorizedCount}
+              </span>
+            )}
           </button>
         </div>
 
@@ -301,10 +309,10 @@ export default function Transactions() {
                   return (
                     <div className="text-right shrink-0">
                       <span className={`text-sm font-medium ${Number(tx.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                        {Number(tx.amount) < 0 ? '-' : '+'}${display.toFixed(2)}
+                        {Number(tx.amount) < 0 ? '-' : '+'}${fmt(display)}
                       </span>
                       {splitTotal > 0 && (
-                        <p className="text-xs text-gray-600 leading-none mt-0.5">of ${full.toFixed(2)}</p>
+                        <p className="text-xs text-gray-600 leading-none mt-0.5">of ${fmt(full)}</p>
                       )}
                     </div>
                   );
@@ -435,6 +443,14 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
   onUpdateSplit: (splitId: number, data: object) => void;
   onDeleteSplit: (splitId: number) => void;
 }) {
+  const { data: people = [] } = useQuery({ queryKey: ['people'], queryFn: transactions.people });
+  const { data: savingsData } = useQuery({ queryKey: ['savings'], queryFn: savings.list });
+  const savingsGoals: any[] = savingsData?.goals ?? [];
+
+  const flatCategories = categoryList.flatMap((c: any) =>
+    c.children?.length ? [c, ...c.children] : [c]
+  );
+
   const [splitWays, setSplitWays] = useState('');
   const [customAmount, setCustomAmount] = useState('');
   const [showSplitOptions, setShowSplitOptions] = useState(false);
@@ -466,10 +482,6 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
     setShowSplitOptions(s => !s);
   };
 
-  const flatCategories = categoryList.flatMap((c: any) =>
-    c.children?.length ? [c, ...c.children] : [c]
-  );
-
   const totalSplit = tx.splits?.reduce((sum: number, s: any) => sum + Number(s.amount), 0) ?? 0;
   const yourPortion = Math.abs(Number(tx.amount)) - totalSplit;
 
@@ -487,24 +499,60 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
 
       <div className="text-2xl font-bold">
         <span className={Number(tx.amount) < 0 ? 'text-red-400' : 'text-green-400'}>
-          {Number(tx.amount) < 0 ? '-' : '+'}${Math.abs(Number(tx.amount)).toFixed(2)}
+          {Number(tx.amount) < 0 ? '-' : '+'}${fmt(Math.abs(Number(tx.amount)))}
         </span>
       </div>
 
-      <div>
-        <label className="text-xs text-gray-400 block mb-1">Category</label>
-        <select
-          value={tx.categoryId ?? ''}
-          onChange={(e) => onUpdate({ categoryId: e.target.value ? parseInt(e.target.value) : null })}
-          className="bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full"
-        >
-          <option value="">Uncategorized</option>
-          {flatCategories.map((c: any) => (
-            <option key={c.id} value={c.id}>
-              {c.parentId ? `  ${c.name}` : c.name}
-            </option>
-          ))}
-        </select>
+      <div className="space-y-2">
+        <div>
+          <label className="text-xs text-gray-400 block mb-1">Category</label>
+          <select
+            value={tx.categoryId ?? ''}
+            onChange={(e) => {
+              const newCatId = e.target.value ? parseInt(e.target.value) : null;
+              const newCat = flatCategories.find((c: any) => c.id === newCatId);
+              onUpdate({ categoryId: newCatId, ...(!newCat?.isReimbursement && { reimbursedBy: null }) });
+            }}
+            className="bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full"
+          >
+            <option value="">Uncategorized</option>
+            {flatCategories.map((c: any) => (
+              <option key={c.id} value={c.id}>
+                {c.parentId ? `  ${c.name}` : c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {flatCategories.find((c: any) => c.id === tx.categoryId)?.isReimbursement && (
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Paid back by</label>
+            <select
+              value={tx.reimbursedBy ?? ''}
+              onChange={(e) => onUpdate({ reimbursedBy: e.target.value || null })}
+              className="bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full"
+            >
+              <option value="">Select person...</option>
+              {(people as string[]).map((p: string) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {Number(tx.amount) < 0 && savingsGoals.length > 0 && (
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Savings Goal</label>
+            <select
+              value={tx.savingsGoalId ?? ''}
+              onChange={(e) => onUpdate({ savingsGoalId: e.target.value ? parseInt(e.target.value) : null })}
+              className="bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full"
+            >
+              <option value="">None</option>
+              {savingsGoals.map((g: any) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div>
@@ -561,7 +609,7 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
                   </button>
                 )}
                 <div className="flex items-center gap-2">
-                  <span className="text-yellow-400">${Number(s.amount).toFixed(2)}</span>
+                  <span className="text-yellow-400">${fmt(Number(s.amount))}</span>
                   {!s.settlement ? (
                     <button onClick={() => onDeleteSplit(s.id)} className="text-gray-600 hover:text-red-400">
                       <X size={12} />
@@ -574,7 +622,7 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
             ))}
             <div className="flex justify-between text-xs text-gray-500 border-t border-gray-800 pt-1 mt-1">
               <span>Your portion</span>
-              <span>${yourPortion.toFixed(2)}</span>
+              <span>${fmt(yourPortion)}</span>
             </div>
           </div>
         )}

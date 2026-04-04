@@ -13,18 +13,23 @@ router.get('/', async (_req: Request, res: Response) => {
 });
 
 router.post('/', async (req: Request, res: Response) => {
-  const { name, parentId, color, isIncome } = req.body;
+  const { name, parentId, color, isIncome, isReimbursement } = req.body;
   const category = await prisma.category.create({
-    data: { name, parentId, color, isIncome },
+    data: { name, parentId, color, isIncome, isReimbursement },
   });
   res.json(category);
 });
 
 router.patch('/:id', async (req: Request, res: Response) => {
-  const { name, color } = req.body;
+  const { name, color, isReimbursement, paycheckTiming } = req.body;
   const category = await prisma.category.update({
     where: { id: parseInt(req.params.id) },
-    data: { ...(name && { name }), ...(color && { color }) },
+    data: {
+      ...(name && { name }),
+      ...(color && { color }),
+      ...(isReimbursement !== undefined && { isReimbursement }),
+      ...(paycheckTiming !== undefined && { paycheckTiming }),
+    },
   });
   res.json(category);
 });

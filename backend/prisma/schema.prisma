@@ -8,32 +8,46 @@ datasource db {
 }
 
 model Account {
-  id            Int           @id @default(autoincrement())
-  name          String
-  accountNumber String?
-  simplefinId   String?       @unique
-  bank          BankSource?
-  type          AccountType
-  balance       Decimal       @default(0) @db.Decimal(10, 2)
-  balanceDate   DateTime?
-  currency      String        @default("USD")
-  createdAt     DateTime      @default(now())
-  transactions Transaction[]
-  imports      ImportLog[]
+  id               Int                      @id @default(autoincrement())
+  name             String
+  accountNumber    String?
+  simplefinId      String?                  @unique
+  bank             BankSource?
+  type             AccountType
+  balance          Decimal                  @default(0) @db.Decimal(10, 2)
+  balanceDate      DateTime?
+  currency         String                   @default("USD")
+  createdAt        DateTime                 @default(now())
+  transactions     Transaction[]
+  imports          ImportLog[]
+  balanceSnapshots AccountBalanceSnapshot[]
 
   @@map("accounts")
 }
 
+model AccountBalanceSnapshot {
+  id        Int      @id @default(autoincrement())
+  accountId Int
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  balance   Decimal  @db.Decimal(10, 2)
+  date      DateTime
+
+  @@unique([accountId, date])
+  @@map("account_balance_snapshots")
+}
+
 model Category {
-  id          Int           @id @default(autoincrement())
-  name        String        @unique
-  parentId    Int?
-  parent      Category?     @relation("CategoryTree", fields: [parentId], references: [id])
-  children    Category[]    @relation("CategoryTree")
-  color       String?
-  isIncome    Boolean       @default(false)
-  transactions Transaction[]
-  budgets     Budget[]
+  id               Int           @id @default(autoincrement())
+  name             String        @unique
+  parentId         Int?
+  parent           Category?     @relation("CategoryTree", fields: [parentId], references: [id])
+  children         Category[]    @relation("CategoryTree")
+  color            String?
+  isIncome         Boolean       @default(false)
+  isReimbursement  Boolean       @default(false)
+  paycheckTiming   PaycheckTiming @default(CURRENT)
+  transactions     Transaction[]
+  budgets          Budget[]
 
   @@map("categories")
 }
@@ -49,6 +63,9 @@ model Transaction {
   categoryId          Int?
   category            Category?          @relation(fields: [categoryId], references: [id])
   notes               String?
+  reimbursedBy        String?
+  savingsGoalId       Int?
+  savingsGoal         SavingsGoal?       @relation(fields: [savingsGoalId], references: [id])
   source              TransactionSource
   fingerprint         String             @unique
   isRecurring         Boolean            @default(false)
@@ -101,12 +118,13 @@ model Budget {
 }
 
 model SavingsGoal {
-  id            Int      @id @default(autoincrement())
-  name          String
-  targetAmount  Decimal  @db.Decimal(10, 2)
-  currentAmount Decimal  @default(0) @db.Decimal(10, 2)
-  targetDate    DateTime?
-  createdAt     DateTime @default(now())
+  id                Int           @id @default(autoincrement())
+  name              String
+  targetAmount      Decimal       @db.Decimal(10, 2)
+  allocationPercent Float         @default(0)
+  color             String?
+  createdAt         DateTime      @default(now())
+  transactions      Transaction[]
 
   @@map("savings_goals")
 }
@@ -157,4 +175,15 @@ enum ImportStatus {
   SUCCESS
   PARTIAL
   FAILED
+}
+
+enum BudgetFrequency {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum PaycheckTiming {
+  CURRENT
+  NEXT_MONTH
 }

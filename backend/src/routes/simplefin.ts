@@ -4,26 +4,32 @@ import {
   exchangeSetupToken,
   fetchSimplefinData,
   getAccessUrl,
+  testConnection,
+  getAccountWarnings,
   normalizeSimplefinTransaction,
 } from '../services/simplefin';
 import { generateFingerprint as generateLegacyFingerprint } from '../parsers/normalizer';
+import { buildMerchantCategoryMap, buildInternalTransferMerchants } from '../services/autoCategorize';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// Check connection status
+// Check connection status (live ping to SimpleFIN)
 router.get('/status', async (_req: Request, res: Response) => {
   const accessUrl = await getAccessUrl();
-  res.json({ connected: !!accessUrl });
+  if (!accessUrl) return res.json({ connected: false, hasAccessUrl: false, staleAccounts: [] });
+  const result = await testConnection();
+  res.json({ connected: result.ok, hasAccessUrl: true, error: result.error ?? null, staleAccounts: result.staleAccounts });
 });
 
-// Debug: show raw SimpleFIN data
+// Debug: show raw SimpleFIN data including org errors
 router.get('/debug', async (_req: Request, res: Response) => {
   const accounts = await fetchSimplefinData();
   res.json(accounts.map(a => ({
     name: a.name,
     id: a.id,
     balance: a.balance,
+    orgErrors: (a as any).org?.errors ?? [],
     txCount: a.transactions.length,
     txDates: a.transactions.map((t: any) => ({
       id: t.id,
@@ -47,10 +53,20 @@ router.post('/connect', async (req: Request, res: Response) => {
 
 // Sync transactions from SimpleFIN
 router.post('/sync', async (_req: Request, res: Response) => {
-  const accounts = await fetchSimplefinData();
+  let accounts;
+  try {
+    accounts = await fetchSimplefinData();
+  } catch (err: any) {
+    return res.status(502).json({ error: err.message ?? 'SimpleFIN sync failed' });
+  }
 
   let newCount = 0;
   let dupCount = 0;
+
+  const [merchantRules, internalTransferMerchants] = await Promise.all([
+    buildMerchantCategoryMap(prisma),
+    buildInternalTransferMerchants(prisma),
+  ]);
 
   for (const sfAccount of accounts) {
     // Try to match by stored simplefinId first
@@ -71,14 +87,24 @@ router.post('/sync', async (_req: Request, res: Response) => {
 
     if (!account) continue;
 
+    const newBalance = parseFloat(sfAccount.balance);
+    const snapshotDate = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
     // Update balance and store simplefinId for future syncs
     await prisma.account.update({
       where: { id: account.id },
       data: {
-        balance: parseFloat(sfAccount.balance),
+        balance: newBalance,
         balanceDate: new Date(sfAccount['balance-date'] * 1000),
         simplefinId: sfAccount.id,
       },
+    });
+
+    // Store a daily balance snapshot for net worth history
+    await prisma.accountBalanceSnapshot.upsert({
+      where: { accountId_date: { accountId: account.id, date: snapshotDate } },
+      update: { balance: newBalance },
+      create: { accountId: account.id, balance: newBalance, date: snapshotDate },
     });
 
     // Ingest transactions
@@ -110,12 +136,21 @@ router.post('/sync', async (_req: Request, res: Response) => {
         continue;
       }
 
-      await prisma.transaction.create({ data: normalized });
+      const isKnownTransfer = internalTransferMerchants.has(normalized.merchantNormalized);
+      const rule = !isKnownTransfer ? merchantRules.get(normalized.merchantNormalized) : undefined;
+      await prisma.transaction.create({
+        data: {
+          ...normalized,
+          ...(isKnownTransfer ? { isInternalTransfer: true } : {}),
+          ...(rule ? { categoryId: rule.categoryId, isRecurring: rule.isRecurring } : {}),
+        },
+      });
       newCount++;
     }
   }
 
-  res.json({ newCount, dupCount });
+  const warnings = getAccountWarnings(accounts);
+  res.json({ newCount, dupCount, warnings });
 });
 
 export default router;

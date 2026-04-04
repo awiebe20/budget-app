@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { imports, accounts } from '../lib/api';
+import { fmt } from '../lib/format';
 import { Upload, CheckCircle, AlertCircle, X, Loader } from 'lucide-react';
 
 type FilePreview = {
@@ -284,7 +285,7 @@ function FilePreviewCard({ fp, accountList, onRemove, onImport, onAccountChange 
                     <span className="text-gray-500 w-20 shrink-0">{new Date(t.date).toLocaleDateString()}</span>
                     <span className="text-gray-300 flex-1 truncate">{t.merchantNormalized}</span>
                     <span className={Number(t.amount) < 0 ? 'text-red-400' : 'text-green-400'}>
-                      {Number(t.amount) < 0 ? '-' : '+'}${Math.abs(Number(t.amount)).toFixed(2)}
+                      {Number(t.amount) < 0 ? '-' : '+'}${fmt(Math.abs(Number(t.amount)))}
                     </span>
                   </div>
                 ))}

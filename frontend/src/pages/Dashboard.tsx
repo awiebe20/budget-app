@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { reports, accounts, settlements, onboarding } from '../lib/api';
+import { fmt } from '../lib/format';
 import { CheckCircle, Circle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -11,6 +12,7 @@ export default function Dashboard() {
   const year = now.getFullYear();
 
   const { data: summary } = useQuery({ queryKey: ['summary', month, year], queryFn: () => reports.summary(month, year) });
+  const { data: budgetData } = useQuery({ queryKey: ['budgets-by-category', month, year], queryFn: () => reports.byCategory(month, year) });
   const { data: accountList } = useQuery({ queryKey: ['accounts'], queryFn: accounts.list });
   const { data: bills } = useQuery({ queryKey: ['upcoming-bills'], queryFn: reports.upcomingBills });
   const { data: pendingSplits } = useQuery({ queryKey: ['pending-splits'], queryFn: settlements.pending });
@@ -18,6 +20,8 @@ export default function Dashboard() {
 
   const totalOwed = pendingSplits?.reduce((sum: number, p: any) => sum + p.total, 0) ?? 0;
   const totalBalance = accountList?.reduce((sum: number, a: any) => sum + Number(a.balance), 0) ?? 0;
+  const budgetedIncome = budgetData?.filter((b: any) => b.category.isIncome).reduce((sum: number, b: any) => sum + b.budgeted, 0) ?? 0;
+  const chartYMax = budgetedIncome > 0 ? Math.ceil(budgetedIncome * 1.15 / 500) * 500 : undefined;
 
   const steps = [
     { key: 'simpleFinConnected', label: 'Connect SimpleFIN', done: ob?.simpleFinConnected },
@@ -58,10 +62,10 @@ export default function Dashboard() {
 
       {/* Top stats */}
       <div className="grid grid-cols-4 gap-4">
-        <StatCard label="Income This Month" value={`$${summary?.income?.toFixed(2) ?? '—'}`} color="text-green-400" />
-        <StatCard label="Expenses This Month" value={`$${Math.abs(summary?.expenses ?? 0).toFixed(2)}`} color="text-red-400" />
-        <StatCard label="Net" value={`$${summary?.net?.toFixed(2) ?? '—'}`} color={summary?.net >= 0 ? 'text-green-400' : 'text-red-400'} />
-        <StatCard label="Total Balance" value={`$${totalBalance.toFixed(2)}`} color="text-blue-400" />
+        <StatCard label="Income This Month" value={summary?.income != null ? `$${fmt(summary.income)}` : '—'} color="text-green-400" />
+        <StatCard label="Expenses This Month" value={`$${fmt(Math.abs(summary?.expenses ?? 0))}`} color="text-red-400" />
+        <StatCard label="Net" value={summary?.net != null ? `$${fmt(summary.net)}` : '—'} color={summary?.net >= 0 ? 'text-green-400' : 'text-red-400'} />
+        <StatCard label="Total Balance" value={`$${fmt(totalBalance)}`} color="text-blue-400" />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -71,8 +75,8 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={[{ name: 'Income', value: summary?.income ?? 0 }, { name: 'Expenses', value: Math.abs(summary?.expenses ?? 0) }]}>
               <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#9ca3af', fontSize: 12 }} />
-              <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: '#111827', border: 'none' }} />
+              <YAxis tick={{ fill: '#9ca3af', fontSize: 12 }} domain={chartYMax ? [0, chartYMax] : undefined} />
+              <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#111827', border: 'none', color: '#f9fafb' }} itemStyle={{ color: '#f9fafb' }} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 <Cell fill="#4ade80" />
                 <Cell fill="#f87171" />
@@ -86,9 +90,12 @@ export default function Dashboard() {
           <h3 className="text-sm font-semibold text-gray-400 mb-3">Upcoming Bills</h3>
           <div className="space-y-2">
             {bills?.slice(0, 5).map((bill: any, i: number) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-gray-300">{bill.merchant}</span>
-                <span className="text-gray-400">${Math.abs(bill.amount).toFixed(2)}</span>
+              <div key={i} className="flex justify-between items-center text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-gray-300 truncate">{bill.merchant}</span>
+                  <span className="text-xs text-gray-600 shrink-0">{new Date(bill.nextDate).toLocaleDateString()}</span>
+                </div>
+                <span className="text-gray-400 shrink-0">${fmt(Math.abs(bill.amount))}</span>
               </div>
             ))}
             {!bills?.length && <p className="text-gray-500 text-sm">No recurring bills found</p>}
@@ -104,7 +111,7 @@ export default function Dashboard() {
             {accountList?.map((a: any) => (
               <div key={a.id} className="flex justify-between text-sm">
                 <span className="text-gray-300">{a.name}</span>
-                <span className="text-gray-400">${Number(a.balance).toFixed(2)}</span>
+                <span className="text-gray-400">${fmt(Number(a.balance))}</span>
               </div>
             ))}
           </div>
@@ -116,7 +123,7 @@ export default function Dashboard() {
             {pendingSplits?.map((p: any) => (
               <div key={p.person} className="flex justify-between text-sm">
                 <span className="text-gray-300">{p.person}</span>
-                <span className="text-green-400">${p.total.toFixed(2)}</span>
+                <span className="text-green-400">${fmt(p.total)}</span>
               </div>
             ))}
             {totalOwed === 0 && <p className="text-gray-500 text-sm">No outstanding splits</p>}

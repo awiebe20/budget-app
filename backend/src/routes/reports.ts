@@ -13,19 +13,42 @@ router.get('/summary', async (req: Request, res: Response) => {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
 
-  const transactions = await prisma.transaction.findMany({
-    where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-    select: { amount: true, splits: { select: { amount: true } } },
+  const prevStart = new Date(year, month - 2, 1);
+  const prevEnd   = new Date(year, month - 1, 0, 23, 59, 59);
+
+  const nextMonthCats = await prisma.category.findMany({
+    where: { isIncome: true, paycheckTiming: 'NEXT_MONTH' },
+    select: { id: true },
   });
+  const nextMonthCatIds = new Set(nextMonthCats.map((c) => c.id));
+
+  const [transactions, shiftedIncome] = await Promise.all([
+    prisma.transaction.findMany({
+      where: { date: { gte: start, lte: end }, isInternalTransfer: false },
+      select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } } },
+    }),
+    nextMonthCatIds.size > 0
+      ? prisma.transaction.findMany({
+          where: {
+            date: { gte: prevStart, lte: prevEnd },
+            isInternalTransfer: false,
+            categoryId: { in: [...nextMonthCatIds] },
+          },
+          select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
 
   const effectiveAmount = (t: { amount: any, splits: { amount: any }[] }) => {
     const splitTotal = t.splits.reduce((s, sp) => s + Number(sp.amount), 0);
     return Number(t.amount) + (Number(t.amount) < 0 ? splitTotal : -splitTotal);
   };
 
-  const income = transactions
-    .filter((t) => Number(t.amount) > 0)
-    .reduce((sum, t) => sum + effectiveAmount(t), 0);
+  // Income = current-month non-shifted + previous-month shifted (as next-month income)
+  const income = [
+    ...transactions.filter((t) => Number(t.amount) > 0 && !t.reimbursedBy && !nextMonthCatIds.has(t.categoryId!)),
+    ...shiftedIncome.filter((t) => Number(t.amount) > 0 && !t.reimbursedBy),
+  ].reduce((sum, t) => sum + effectiveAmount(t), 0);
 
   const expenses = transactions
     .filter((t) => Number(t.amount) < 0)
@@ -43,6 +66,9 @@ router.get('/by-category', async (req: Request, res: Response) => {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59);
 
+  const prevStartBC = new Date(year, month - 2, 1);
+  const prevEndBC   = new Date(year, month - 1, 0, 23, 59, 59);
+
   const [transactions, budgets] = await Promise.all([
     prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false, categoryId: { not: null } },
@@ -56,22 +82,57 @@ router.get('/by-category', async (req: Request, res: Response) => {
     }),
   ]);
 
+  // Fetch prev-month transactions for NEXT_MONTH income categories
+  const nextMonthBudgetCatIds = new Set(
+    budgets
+      .filter((b) => b.category.isIncome && b.category.paycheckTiming === 'NEXT_MONTH')
+      .map((b) => b.categoryId)
+  );
+  const prevMonthIncomeTxs = nextMonthBudgetCatIds.size > 0
+    ? await prisma.transaction.findMany({
+        where: {
+          date: { gte: prevStartBC, lte: prevEndBC },
+          categoryId: { in: [...nextMonthBudgetCatIds] },
+        },
+        select: { amount: true, categoryId: true, splits: { select: { amount: true } } },
+      })
+    : [];
+
   // Sum spending per category using your portion only
   const spendingMap: Record<number, number> = {};
+  const addToMap = (t: { categoryId: number | null, amount: any, splits: { amount: any }[] }) => {
+    if (!t.categoryId) return;
+    const splitTotal = t.splits.reduce((s, sp) => s + Number(sp.amount), 0);
+    spendingMap[t.categoryId] = (spendingMap[t.categoryId] || 0) + Number(t.amount) + splitTotal;
+  };
+  // Current-month: skip NEXT_MONTH income categories (they use prev-month data)
   for (const t of transactions) {
-    if (t.categoryId) {
-      const splitTotal = t.splits.reduce((s, sp) => s + Number(sp.amount), 0);
-      const portion = Number(t.amount) + splitTotal; // amount is negative, splitTotal is positive
-      spendingMap[t.categoryId] = (spendingMap[t.categoryId] || 0) + portion;
-    }
+    if (nextMonthBudgetCatIds.has(t.categoryId!)) continue;
+    addToMap(t);
+  }
+  // NEXT_MONTH income categories: use previous month's transactions
+  for (const t of prevMonthIncomeTxs) {
+    addToMap(t);
   }
 
-  const result = budgets.map((b) => ({
-    category: b.category,
-    budgeted: Number(b.amount),
-    spent: Math.abs(spendingMap[b.categoryId] || 0),
-    remaining: Number(b.amount) - Math.abs(spendingMap[b.categoryId] || 0),
-  }));
+  const toMonthly = (amount: number, frequency: string) => {
+    if (frequency === 'QUARTERLY') return amount / 3;
+    if (frequency === 'ANNUAL') return amount / 12;
+    return amount;
+  };
+
+  const result = budgets.map((b) => {
+    const monthlyBudget = toMonthly(Number(b.amount), b.frequency);
+    const spent = Math.abs(spendingMap[b.categoryId] || 0);
+    return {
+      category: b.category,
+      budgeted: monthlyBudget,
+      budgetedRaw: Number(b.amount),
+      frequency: b.frequency,
+      spent,
+      remaining: monthlyBudget - spent,
+    };
+  });
 
   res.json(result);
 });
@@ -93,7 +154,7 @@ router.get('/trend', async (req: Request, res: Response) => {
 
     const transactions = await prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-      select: { amount: true, splits: { select: { amount: true } } },
+      select: { amount: true, reimbursedBy: true, splits: { select: { amount: true } } },
     });
 
     const effectiveAmt = (t: { amount: any, splits: { amount: any }[] }) => {
@@ -102,7 +163,7 @@ router.get('/trend', async (req: Request, res: Response) => {
     };
 
     const income = transactions
-      .filter((t) => Number(t.amount) > 0)
+      .filter((t) => Number(t.amount) > 0 && !t.reimbursedBy)
       .reduce((sum, t) => sum + effectiveAmt(t), 0);
 
     const expenses = transactions
@@ -113,6 +174,92 @@ router.get('/trend', async (req: Request, res: Response) => {
   }
 
   res.json(results);
+});
+
+// GET /api/reports/category-totals?months=6
+// Total spending per category over a period (for analytics)
+router.get('/category-totals', async (req: Request, res: Response) => {
+  const months = parseInt(req.query.months as string) || 6;
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      date: { gte: start, lte: end },
+      isInternalTransfer: false,
+      amount: { lt: 0 },
+      category: { isReimbursement: false },
+      categoryId: { not: null },
+    },
+    select: {
+      amount: true,
+      categoryId: true,
+      category: { select: { name: true, color: true } },
+    },
+  });
+
+  const map: Record<number, { name: string; color: string | null; total: number }> = {};
+  for (const tx of transactions) {
+    if (!tx.categoryId) continue;
+    if (!map[tx.categoryId]) {
+      map[tx.categoryId] = { name: tx.category!.name, color: tx.category!.color, total: 0 };
+    }
+    map[tx.categoryId].total += Math.abs(Number(tx.amount));
+  }
+
+  const result = Object.values(map).sort((a, b) => b.total - a.total);
+  res.json(result);
+});
+
+// GET /api/reports/net-worth?months=12
+// Uses stored balance snapshots for accuracy. Falls back to transaction reconstruction only when no snapshot exists.
+router.get('/net-worth', async (req: Request, res: Response) => {
+  const months = parseInt(req.query.months as string) || 12;
+  const now = new Date();
+
+  const [accountList, snapshots, transactions] = await Promise.all([
+    prisma.account.findMany({ select: { id: true, balance: true } }),
+    prisma.accountBalanceSnapshot.findMany({
+      orderBy: { date: 'desc' },
+    }),
+    prisma.transaction.findMany({
+      where: { isInternalTransfer: false },
+      select: { accountId: true, amount: true, date: true },
+    }),
+  ]);
+
+  const points = [];
+
+  for (let i = months - 1; i >= 0; i--) {
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+
+    let netWorth = 0;
+    for (const account of accountList) {
+      // Find the most recent snapshot on or before this month-end
+      const snapshot = snapshots.find(
+        (s) => s.accountId === account.id && new Date(s.date) <= monthEnd
+      );
+
+      if (snapshot) {
+        netWorth += Number(snapshot.balance);
+      } else {
+        // No snapshot yet — fall back to transaction-based reconstruction
+        const delta = transactions
+          .filter((t) => t.accountId === account.id && new Date(t.date) > monthEnd)
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+        netWorth += Number(account.balance) - delta;
+      }
+    }
+
+    points.push({
+      month: monthEnd.getMonth() + 1,
+      year: monthEnd.getFullYear(),
+      netWorth: Math.round(netWorth * 100) / 100,
+    });
+  }
+
+  res.json(points);
 });
 
 // GET /api/reports/upcoming-bills

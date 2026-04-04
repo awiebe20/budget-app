@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { PrismaClient } from '@prisma/client';
 import transactionRoutes from './routes/transactions';
 import accountRoutes from './routes/accounts';
 import categoryRoutes from './routes/categories';
@@ -13,6 +14,15 @@ import onboardingRoutes from './routes/onboarding';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const prisma = new PrismaClient();
+
+async function seedRequiredCategories() {
+  await prisma.category.upsert({
+    where: { name: 'Reimbursement' },
+    update: {},
+    create: { name: 'Reimbursement', color: '#34d399', isIncome: false, isReimbursement: true },
+  });
+}
 
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
@@ -30,6 +40,7 @@ app.use('/api/onboarding', onboardingRoutes);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  await seedRequiredCategories();
   console.log(`Backend running on port ${PORT}`);
 });

@@ -4,28 +4,45 @@ import { PrismaClient } from '@prisma/client';
 const router = Router();
 const prisma = new PrismaClient();
 
-// GET /api/settlements/pending - unsettled splits grouped by person
+// GET /api/settlements/pending - unsettled splits grouped by person, minus reimbursements
 router.get('/pending', async (_req: Request, res: Response) => {
-  const splits = await prisma.transactionSplit.findMany({
-    where: { settlementId: null },
-    include: {
-      transaction: { select: { date: true, merchantNormalized: true, amount: true } },
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+  const [splits, reimbursements] = await Promise.all([
+    prisma.transactionSplit.findMany({
+      where: { settlementId: null },
+      include: {
+        transaction: { select: { date: true, merchantNormalized: true, amount: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.transaction.findMany({
+      where: { reimbursedBy: { not: null } },
+      select: { reimbursedBy: true, amount: true },
+    }),
+  ]);
 
-  // Group by person
+  // Sum reimbursements per person
+  const reimbursedTotals: Record<string, number> = {};
+  for (const tx of reimbursements) {
+    const person = tx.reimbursedBy!;
+    reimbursedTotals[person] = (reimbursedTotals[person] ?? 0) + Math.abs(Number(tx.amount));
+  }
+
+  // Group splits by person
   const grouped = splits.reduce<Record<string, typeof splits>>((acc, split) => {
     if (!acc[split.owedBy]) acc[split.owedBy] = [];
     acc[split.owedBy].push(split);
     return acc;
   }, {});
 
-  const result = Object.entries(grouped).map(([person, personSplits]) => ({
-    person,
-    total: personSplits.reduce((sum, s) => sum + Number(s.amount), 0),
-    splits: personSplits,
-  }));
+  const result = Object.entries(grouped).map(([person, personSplits]) => {
+    const owed = personSplits.reduce((sum, s) => sum + Number(s.amount), 0);
+    const reimbursed = reimbursedTotals[person] ?? 0;
+    return {
+      person,
+      total: Math.max(0, owed - reimbursed),
+      splits: personSplits,
+    };
+  }).filter(p => p.total > 0);
 
   res.json(result);
 });

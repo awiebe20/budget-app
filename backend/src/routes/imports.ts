@@ -3,6 +3,7 @@ import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
 import { parseCSV, detectBankFromContent, BankSource } from '../parsers';
 import { generateFingerprint } from '../parsers/normalizer';
+import { buildMerchantCategoryMap, buildInternalTransferMerchants } from '../services/autoCategorize';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -101,6 +102,11 @@ router.post('/confirm', upload.single('file'), async (req: Request, res: Respons
     let inserted = 0;
     let duplicates = 0;
 
+    const [merchantRules, internalTransferMerchants] = await Promise.all([
+      buildMerchantCategoryMap(prisma),
+      buildInternalTransferMerchants(prisma),
+    ]);
+
     for (const t of parsed) {
       const fingerprint = generateFingerprint(t.date, t.amount, accountId);
       const exists = await prisma.transaction.findUnique({ where: { fingerprint } });
@@ -110,7 +116,10 @@ router.post('/confirm', upload.single('file'), async (req: Request, res: Respons
         continue;
       }
 
-      const isInternalTransfer = t.merchantNormalized.toLowerCase().includes('internal transfer');
+      const isInternalTransfer =
+        t.merchantNormalized.toLowerCase().includes('internal transfer') ||
+        internalTransferMerchants.has(t.merchantNormalized);
+      const rule = !isInternalTransfer ? merchantRules.get(t.merchantNormalized) : undefined;
 
       await prisma.transaction.create({
         data: {
@@ -123,6 +132,7 @@ router.post('/confirm', upload.single('file'), async (req: Request, res: Respons
           fingerprint,
           isInternalTransfer,
           importId: importLog.id,
+          ...(rule ? { categoryId: rule.categoryId, isRecurring: rule.isRecurring } : {}),
         },
       });
       inserted++;

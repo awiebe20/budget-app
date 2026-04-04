@@ -22,14 +22,14 @@ router.get('/', async (_req: Request, res: Response) => {
 
 // Upsert budget for the current month — creates a new record if amount changed
 router.post('/', async (req: Request, res: Response) => {
-  const { categoryId, amount } = req.body;
+  const { categoryId, amount, frequency = 'MONTHLY' } = req.body;
   const now = new Date();
   const effectiveFrom = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const budget = await prisma.budget.upsert({
     where: { categoryId_effectiveFrom: { categoryId, effectiveFrom } },
-    update: { amount },
-    create: { categoryId, amount, effectiveFrom },
+    update: { amount, frequency },
+    create: { categoryId, amount, frequency, effectiveFrom },
   });
 
   res.json(budget);
