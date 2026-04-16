@@ -1,5 +1,6 @@
 import React from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
+import UpdateToast from './components/UpdateToast';
 import { MonthProvider } from './lib/MonthContext';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
@@ -28,6 +29,7 @@ export default function App() {
         style={{ height: 40, WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
 
+      <UpdateToast />
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <nav className="w-48 bg-gray-900 flex flex-col p-4 gap-1 shrink-0">

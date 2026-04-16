@@ -51,6 +51,14 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "awiebe20",
+      "repo": "budget-app"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
   }
 }

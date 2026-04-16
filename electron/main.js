@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu } = require('electron');
+const { app, BrowserWindow, dialog, Menu, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -10,36 +10,19 @@ function setupDatabase(isDev) {
   const userDataPath = app.getPath('userData');
   const dbPath = path.join(userDataPath, 'budget.db');
 
-  console.log('[db] isDev:', isDev);
-  console.log('[db] __dirname:', __dirname);
-  console.log('[db] userDataPath:', userDataPath);
-  console.log('[db] dbPath:', dbPath);
-  console.log('[db] dbPath exists:', fs.existsSync(dbPath));
-
   if (!fs.existsSync(dbPath)) {
     const blankDb = isDev
       ? path.join(__dirname, 'blank.db')
       : path.join(process.resourcesPath, 'blank.db');
 
-    console.log('[db] blankDb path:', blankDb);
-    console.log('[db] blankDb exists:', fs.existsSync(blankDb));
-
     if (fs.existsSync(blankDb)) {
       fs.copyFileSync(blankDb, dbPath);
-      console.log('[db] Copied blank database to', dbPath);
-      console.log('[db] dbPath exists after copy:', fs.existsSync(dbPath));
-    } else {
-      console.log('[db] No blank.db found — backend will create schema on first connect');
     }
-  } else {
-    console.log('[db] Using existing database at', dbPath);
   }
 
-  // Prisma requires forward slashes even on Windows
   const dbUrl = dbPath.replace(/\\/g, '/');
   process.env.DATABASE_URL = `file:${dbUrl}`;
   process.env.PORT = String(BACKEND_PORT);
-  console.log('[db] DATABASE_URL set to:', process.env.DATABASE_URL);
 }
 
 function startBackend(isDev) {
@@ -58,7 +41,6 @@ function startBackend(isDev) {
 
   try {
     require(backendEntry);
-    console.log('[electron] Backend loaded');
   } catch (err) {
     dialog.showErrorBox('Backend failed to start', String(err));
     app.quit();
@@ -95,6 +77,7 @@ function createWindow(isDev) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     show: false,
   });
@@ -105,10 +88,37 @@ function createWindow(isDev) {
     : `file://${builtFrontend}`;
 
   mainWindow.loadURL(url);
-  mainWindow.webContents.openDevTools();
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
 }
+
+function setupAutoUpdater() {
+  // Only run in packaged app
+  if (!app.isPackaged) return;
+
+  const { autoUpdater } = require('electron-updater');
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-downloaded', () => {
+    if (mainWindow) mainWindow.webContents.send('update-downloaded');
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err);
+  });
+
+  // Check on startup, then every 4 hours
+  autoUpdater.checkForUpdates();
+  setInterval(() => autoUpdater.checkForUpdates(), 4 * 60 * 60 * 1000);
+}
+
+ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.on('restart-and-install', () => {
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.quitAndInstall();
+});
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
@@ -126,6 +136,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow(isDev);
+  setupAutoUpdater();
 });
 
 app.on('window-all-closed', () => {
