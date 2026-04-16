@@ -33,7 +33,7 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <nav className="w-48 bg-gray-900 flex flex-col p-4 gap-1 shrink-0">
-          <h1 className="text-lg font-bold mb-6 text-white select-none">Budget</h1>
+          <h1 className="text-lg font-bold mb-6 text-white select-none">Abundance</h1>
           {navItems.map((item) => (
             <NavLink
               key={item.to}

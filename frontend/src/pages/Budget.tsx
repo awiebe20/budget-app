@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { budgets, reports, categories } from '../lib/api';
 import { useMonthContext } from '../lib/MonthContext';
 import { fmt } from '../lib/format';
-import { ChevronLeft, ChevronRight, Pencil, Check, X, Trash2, Plus } from 'lucide-react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { ChevronLeft, ChevronRight, Pencil, Check, X, Trash2, Plus, GripVertical } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
 const FALLBACK_COLOR = '#6b7280';
 const CATEGORY_COLORS = [
@@ -45,19 +46,23 @@ export default function Budget() {
   const qc = useQueryClient();
   const now = new Date();
   const { month, year, setMonth, setYear } = useMonthContext();
+  const navigate = useNavigate();
   const [editingBudget, setEditingBudget] = useState<number | null>(null);
   const [editBudgetValue, setEditBudgetValue] = useState('');
-  const [editFrequencyValue, setEditFrequencyValue] = useState<'MONTHLY' | 'QUARTERLY' | 'ANNUAL'>('MONTHLY');
+  const [editFrequencyValue, setEditFrequencyValue] = useState<'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL'>('MONTHLY');
   const [editTimingValue, setEditTimingValue] = useState<'CURRENT' | 'NEXT_MONTH'>('CURRENT');
   const [editColorValue, setEditColorValue] = useState(CATEGORY_COLORS[0]);
+  const [editIsEssential, setEditIsEssential] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({ preset: '', customName: '', color: CATEGORY_COLORS[0], isIncome: false, isReimbursement: false, budgetAmount: '', frequency: 'MONTHLY' as 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' });
+  const [categoryForm, setCategoryForm] = useState({ preset: '', customName: '', color: CATEGORY_COLORS[0], isIncome: false, isReimbursement: false, budgetAmount: '', frequency: 'MONTHLY' as 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL' });
 
   const selectedPreset = PRESET_CATEGORIES.find((p) => p.name === categoryForm.preset);
   const isCustom = categoryForm.preset === '__custom__';
   const resolvedName = isCustom ? categoryForm.customName : categoryForm.preset;
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<number | null>(null);
+  const [dragInsertBeforeId, setDragInsertBeforeId] = useState<number | 'income-end' | 'expense-end' | null>(null);
+  const dragIdRef = useRef<number | null>(null);
 
   const { data: budgetData } = useQuery({
     queryKey: ['budgets-by-category', month, year],
@@ -100,7 +105,7 @@ export default function Budget() {
 
   const createCategoryMutation = useMutation({
     mutationFn: async () => {
-      const cat = await categories.create({ name: resolvedName, color: categoryForm.color, isIncome: categoryForm.isIncome, isReimbursement: categoryForm.isReimbursement });
+      const cat = await categories.create({ name: resolvedName, color: categoryForm.color, isIncome: categoryForm.isIncome, isReimbursement: categoryForm.isReimbursement, isEssential: (categoryForm as any).isEssential ?? false });
       if (categoryForm.budgetAmount) {
         await budgets.upsert({ categoryId: cat.id, amount: parseFloat(categoryForm.budgetAmount), frequency: categoryForm.frequency });
       }
@@ -126,6 +131,45 @@ export default function Budget() {
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: (order: { id: number; order: number }[]) => categories.reorder(order),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+    onError: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+  });
+
+  const handleDrop = (insertBefore: number | 'income-end' | 'expense-end') => {
+    const fromId = dragIdRef.current;
+    if (!fromId) return;
+    const allCats = categoryList ?? [];
+    const reordered: number[] = allCats.map((c: any) => c.id).filter((id: number) => id !== fromId);
+    if (insertBefore === 'income-end' || insertBefore === 'expense-end') {
+      const isIncome = insertBefore === 'income-end';
+      const sectionIds = new Set(
+        allCats
+          .filter((c: any) => c.isIncome === isIncome && !c.isReimbursement && !c.isFromSavings && c.id !== fromId)
+          .map((c: any) => c.id)
+      );
+      let lastIdx = -1;
+      for (let i = reordered.length - 1; i >= 0; i--) {
+        if (sectionIds.has(reordered[i])) { lastIdx = i; break; }
+      }
+      reordered.splice(lastIdx + 1, 0, fromId);
+    } else {
+      if (insertBefore === fromId) return;
+      const toIdx = reordered.indexOf(insertBefore);
+      if (toIdx !== -1) reordered.splice(toIdx, 0, fromId);
+      else reordered.push(fromId);
+    }
+    reorderMutation.mutate(reordered.map((id: number, i: number) => ({ id, order: i })));
+    qc.setQueryData(['categories'], (old: any[]) => {
+      if (!old) return old;
+      const map = new Map(old.map((c: any) => [c.id, c]));
+      return reordered.map((id: number) => map.get(id)).filter(Boolean);
+    });
+    setDragInsertBeforeId(null);
+    dragIdRef.current = null;
+  };
+
   const prevMonth = () => {
     if (month === 1) { setMonth(12); setYear(year - 1); }
     else setMonth(month - 1);
@@ -148,6 +192,9 @@ export default function Budget() {
 
   const currentBudgetMap: Record<number, { amount: number; frequency: string }> = {};
   budgetList?.forEach((b: any) => { currentBudgetMap[b.categoryId] = { amount: Number(b.amount), frequency: b.frequency ?? 'MONTHLY' }; });
+
+  const coveredThroughMap: Record<number, string | null> = {};
+  budgetData?.forEach((b: any) => { if (b.category?.id) coveredThroughMap[b.category.id] = b.coveredThrough ?? null; });
 
   const incomeCategories = categoryList?.filter((c: any) => c.isIncome && !c.isReimbursement && !c.isFromSavings) ?? [];
   const expenseCategories = categoryList?.filter((c: any) => !c.isIncome && !c.isReimbursement && !c.isFromSavings) ?? [];
@@ -176,6 +223,7 @@ export default function Budget() {
     setEditFrequencyValue((current?.frequency ?? 'MONTHLY') as 'MONTHLY' | 'QUARTERLY' | 'ANNUAL');
     setEditTimingValue((cat.paycheckTiming ?? 'CURRENT') as 'CURRENT' | 'NEXT_MONTH');
     setEditColorValue(cat.color ?? FALLBACK_COLOR);
+    setEditIsEssential(cat.isEssential ?? false);
     setShowColorPicker(false);
   };
 
@@ -188,19 +236,22 @@ export default function Budget() {
     }
     const colorChanged = editColorValue !== cat.color;
     const timingChanged = editTimingValue !== (cat.paycheckTiming ?? 'CURRENT');
-    if (colorChanged || (cat.isIncome && timingChanged)) {
-      updateCategoryMutation.mutate({ id: cat.id, data: { color: editColorValue, ...(cat.isIncome && { paycheckTiming: editTimingValue }) } });
+    const essentialChanged = editIsEssential !== (cat.isEssential ?? false);
+    if (colorChanged || (cat.isIncome && timingChanged) || essentialChanged) {
+      updateCategoryMutation.mutate({ id: cat.id, data: { color: editColorValue, ...(cat.isIncome && { paycheckTiming: editTimingValue }), isEssential: editIsEssential } });
     }
   };
 
   const toMonthly = (amount: number, frequency: string) => {
     if (frequency === 'QUARTERLY') return amount / 3;
+    if (frequency === 'SEMI_ANNUAL') return amount / 6;
     if (frequency === 'ANNUAL') return amount / 12;
     return amount;
   };
 
   const frequencyLabel = (amount: number, frequency: string) => {
     if (frequency === 'QUARTERLY') return `$${fmt(amount)}/qtr`;
+    if (frequency === 'SEMI_ANNUAL') return `$${fmt(amount)}/6mo`;
     if (frequency === 'ANNUAL') return `$${fmt(amount)}/yr`;
     return null;
   };
@@ -219,11 +270,21 @@ export default function Budget() {
     const isUnder = isIncome && spent < budgeted && budgeted > 0;
     const isEditingBudget = editingBudget === cat.id;
     const rawLabel = frequencyLabel(currentBudget, currentFrequency);
+    const budgetEntry = budgetData?.find((b: any) => b.category?.id === cat.id);
 
     return (
-      <div key={cat.id} className="group bg-gray-900 rounded-lg p-4 space-y-2">
+      <div
+        key={cat.id}
+        className="group bg-gray-900 rounded-lg p-4 space-y-2"
+        draggable
+        onDragStart={() => { dragIdRef.current = cat.id; }}
+        onDragOver={(e) => { e.preventDefault(); if (dragIdRef.current !== cat.id) setDragInsertBeforeId(cat.id); }}
+        onDrop={() => handleDrop(cat.id)}
+        onDragEnd={() => { setDragInsertBeforeId(null); dragIdRef.current = null; }}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
+            <GripVertical size={14} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-600 cursor-grab shrink-0" />
             {isEditingBudget ? (
               <button
                 onClick={() => setShowColorPicker((v) => !v)}
@@ -234,7 +295,16 @@ export default function Budget() {
             ) : (
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color ?? FALLBACK_COLOR }} />
             )}
-            <span className="text-sm font-medium text-white">{cat.name}</span>
+            {isEditingBudget ? (
+              <span className="text-sm font-medium text-white">{cat.name}</span>
+            ) : (
+              <button
+                onClick={() => navigate(`/transactions?categoryId=${cat.id}&month=${month}&year=${year}&from=budget`)}
+                className="text-sm font-medium text-white hover:text-blue-400 transition-colors"
+              >
+                {cat.name}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -242,11 +312,12 @@ export default function Budget() {
               <>
                 <select
                   value={editFrequencyValue}
-                  onChange={(e) => setEditFrequencyValue(e.target.value as 'MONTHLY' | 'QUARTERLY' | 'ANNUAL')}
+                  onChange={(e) => setEditFrequencyValue(e.target.value as 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL')}
                   className="bg-gray-800 text-white rounded px-2 py-1 text-xs"
                 >
                   <option value="MONTHLY">Monthly</option>
                   <option value="QUARTERLY">Quarterly</option>
+                  <option value="SEMI_ANNUAL">Semi-Annual</option>
                   <option value="ANNUAL">Annual</option>
                 </select>
                 {isIncome && (
@@ -270,6 +341,15 @@ export default function Budget() {
                   autoFocus
                   min="0"
                 />
+                {!isIncome && (
+                  <button
+                    onClick={() => setEditIsEssential(!editIsEssential)}
+                    className={`text-xs px-2 py-0.5 rounded border transition-colors ${editIsEssential ? 'border-orange-500 text-orange-400' : 'border-gray-600 text-gray-500 hover:border-gray-400'}`}
+                    title="Toggle fixed/flexible"
+                  >
+                    {editIsEssential ? 'Fixed' : 'Flexible'}
+                  </button>
+                )}
                 <button onClick={() => saveBudget(cat)} className="text-green-400 hover:text-green-300">
                   <Check size={15} />
                 </button>
@@ -284,6 +364,9 @@ export default function Budget() {
                     {incomePercent && <span className="text-xs text-gray-600">{incomePercent}% of income</span>}
                     {rawLabel && (
                       <span className="text-xs text-gray-500">{rawLabel}</span>
+                    )}
+                    {!isIncome && cat.isEssential && (
+                      <span className="text-xs text-orange-500/70">Fixed</span>
                     )}
                     <span className={`text-sm font-semibold ${isOver ? 'text-red-400' : 'text-white'}`}>
                       ${fmt(budgeted || toMonthly(currentBudget, currentFrequency))}/mo
@@ -331,20 +414,31 @@ export default function Budget() {
 
         {budgeted > 0 && (
           <>
-            <div className="w-full bg-gray-800 rounded-full h-1.5">
-              <div
-                className={`h-1.5 rounded-full transition-all ${isOver ? 'bg-red-500' : isIncome ? 'bg-green-500' : 'bg-blue-500'}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>${fmt(spent)} {isIncome ? 'received' : 'spent'}</span>
-              <span className={isOver ? 'text-red-400' : isUnder ? 'text-yellow-400' : 'text-gray-400'}>
-                {isIncome
-                  ? remaining > 0 ? `$${fmt(remaining)} expected` : 'Target met'
-                  : remaining < 0 ? `-$${fmt(Math.abs(remaining))} over` : `$${fmt(remaining)} left`}
-              </span>
-            </div>
+            {budgetEntry?.coveredThrough ? (
+              <div className="flex justify-between text-xs">
+                <span className="text-green-400">Covered</span>
+                <span className="text-gray-500">
+                  through {new Date(budgetEntry.coveredThrough).toLocaleDateString('default', { month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="w-full bg-gray-800 rounded-full h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full transition-all ${isOver ? 'bg-red-500' : isIncome ? 'bg-green-500' : 'bg-blue-500'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>${fmt(spent)} {isIncome ? 'received' : 'spent'}</span>
+                  <span className={isOver ? 'text-red-400' : isUnder ? 'text-yellow-400' : 'text-gray-400'}>
+                    {isIncome
+                      ? remaining > 0 ? `$${fmt(remaining)} expected` : 'Target met'
+                      : remaining < 0 ? `-$${fmt(Math.abs(remaining))} over` : `$${fmt(remaining)} left`}
+                  </span>
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -419,11 +513,12 @@ export default function Budget() {
               <div className="flex gap-2">
                 <select
                   value={categoryForm.frequency}
-                  onChange={(e) => setCategoryForm({ ...categoryForm, frequency: e.target.value as 'MONTHLY' | 'QUARTERLY' | 'ANNUAL' })}
+                  onChange={(e) => setCategoryForm({ ...categoryForm, frequency: e.target.value as 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL' })}
                   className="bg-gray-800 text-white rounded px-2 py-2 text-xs"
                 >
                   <option value="MONTHLY">Monthly</option>
                   <option value="QUARTERLY">Quarterly</option>
+                  <option value="SEMI_ANNUAL">Semi-Annual</option>
                   <option value="ANNUAL">Annual</option>
                 </select>
                 <input
@@ -487,6 +582,18 @@ export default function Budget() {
                   />
                   <label htmlFor="isReimbursement" className="text-xs text-gray-400">Reimbursement category</label>
                 </div>
+                {!categoryForm.isIncome && !categoryForm.isReimbursement && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isEssential"
+                      checked={categoryForm.isReimbursement ? false : (categoryForm as any).isEssential ?? false}
+                      onChange={(e) => setCategoryForm({ ...categoryForm, isReimbursement: false, isEssential: e.target.checked } as any)}
+                      className="w-4 h-4"
+                    />
+                    <label htmlFor="isEssential" className="text-xs text-gray-400">Fixed expense</label>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -556,25 +663,23 @@ export default function Budget() {
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-gray-900 rounded-lg p-4">
             <p className="text-xs text-gray-400 mb-2">Budget Allocation</p>
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={budgetedPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
+                <Pie data={budgetedPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
                   {budgetedPieData.map((entry: { color: string }, i: number) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#111827', border: 'none', fontSize: 12 }} />
-                <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#1f2937', border: '1px solid #374151', fontSize: 12 }} itemStyle={{ color: '#f9fafb' }} labelStyle={{ color: '#f9fafb' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
           <div className="bg-gray-900 rounded-lg p-4">
             <p className="text-xs text-gray-400 mb-2">Actual Spending</p>
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={spentPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
+                <Pie data={spentPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
                   {spentPieData.map((entry: { color: string }, i: number) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#111827', border: 'none', fontSize: 12 }} />
-                <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#1f2937', border: '1px solid #374151', fontSize: 12 }} itemStyle={{ color: '#f9fafb' }} labelStyle={{ color: '#f9fafb' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -585,7 +690,20 @@ export default function Budget() {
       {incomeCategories.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Income</h3>
-          {incomeCategories.map((cat: any) => renderCategoryRow(cat, true))}
+          {incomeCategories.map((cat: any) => (
+            <Fragment key={cat.id}>
+              {dragInsertBeforeId === cat.id && dragIdRef.current !== cat.id && (
+                <div className="h-0.5 bg-blue-500 rounded mx-1" />
+              )}
+              {renderCategoryRow(cat, true)}
+            </Fragment>
+          ))}
+          {dragInsertBeforeId === 'income-end' && <div className="h-0.5 bg-blue-500 rounded mx-1" />}
+          <div
+            className="h-2"
+            onDragOver={(e) => { e.preventDefault(); setDragInsertBeforeId('income-end'); }}
+            onDrop={() => handleDrop('income-end')}
+          />
         </div>
       )}
 
@@ -594,7 +712,20 @@ export default function Budget() {
         {incomeCategories.length > 0 && (
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Expenses</h3>
         )}
-        {expenseCategories.map((cat: any) => renderCategoryRow(cat, false))}
+        {expenseCategories.map((cat: any) => (
+          <Fragment key={cat.id}>
+            {dragInsertBeforeId === cat.id && dragIdRef.current !== cat.id && (
+              <div className="h-0.5 bg-blue-500 rounded mx-1" />
+            )}
+            {renderCategoryRow(cat, false)}
+          </Fragment>
+        ))}
+        {dragInsertBeforeId === 'expense-end' && <div className="h-0.5 bg-blue-500 rounded mx-1" />}
+        <div
+          className="h-2"
+          onDragOver={(e) => { e.preventDefault(); setDragInsertBeforeId('expense-end'); }}
+          onDrop={() => handleDrop('expense-end')}
+        />
         {expenseCategories.length === 0 && (
           <p className="text-gray-500 text-sm">No categories yet. Click "Add Category" to get started.</p>
         )}

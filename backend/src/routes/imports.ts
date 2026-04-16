@@ -3,7 +3,7 @@ import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
 import { parseCSV, detectBankFromContent, BankSource } from '../parsers';
 import { generateFingerprint } from '../parsers/normalizer';
-import { buildMerchantCategoryMap, buildInternalTransferMerchants } from '../services/autoCategorize';
+import { buildMerchantCategoryMap, buildInternalTransferMerchants, isInternalTransferMatch } from '../services/autoCategorize';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -118,7 +118,7 @@ router.post('/confirm', upload.single('file'), async (req: Request, res: Respons
 
       const isInternalTransfer =
         t.merchantNormalized.toLowerCase().includes('internal transfer') ||
-        internalTransferMerchants.has(t.merchantNormalized);
+        isInternalTransferMatch(t.merchantNormalized, internalTransferMerchants);
       const rule = !isInternalTransfer ? merchantRules.get(t.merchantNormalized) : undefined;
 
       await prisma.transaction.create({

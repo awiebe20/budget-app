@@ -173,6 +173,11 @@ export default function Settings() {
     enabled: showInternalTransfers,
   });
 
+  const unmarkTransferMutation = useMutation({
+    mutationFn: (id: number) => transactions.update(id, { isInternalTransfer: false }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['internal-transfers'] }),
+  });
+
   return (
     <div className="max-w-2xl space-y-8">
       <h2 className="text-2xl font-bold">Settings</h2>
@@ -484,9 +489,18 @@ export default function Settings() {
                     {new Date(tx.date).toLocaleDateString()} · {tx.account?.name}
                   </p>
                 </div>
-                <span className={`text-sm font-medium ${Number(tx.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                  {Number(tx.amount) < 0 ? '-' : '+'}${fmt(Math.abs(Number(tx.amount)))}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm font-medium ${Number(tx.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {Number(tx.amount) < 0 ? '-' : '+'}${fmt(Math.abs(Number(tx.amount)))}
+                  </span>
+                  <button
+                    onClick={() => unmarkTransferMutation.mutate(tx.id)}
+                    className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                    title="Remove internal transfer flag"
+                  >
+                    Unmark
+                  </button>
+                </div>
               </div>
             ))}
           </div>

@@ -18,8 +18,8 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 const FALLBACK_COLOR = '#6b7280';
 
 function getMonths(period: string): number {
-  if (period === 'ytd') return new Date().getMonth() + 1;
-  return parseInt(period);
+  if (period === 'ytd') return new Date().getMonth(); // exclude current month
+  return parseInt(period) + 1; // request one extra so we have N completed after excluding current
 }
 
 export default function Analytics() {
@@ -28,7 +28,7 @@ export default function Analytics() {
 
   const { data: trend = [] } = useQuery({
     queryKey: ['trend', period],
-    queryFn: () => reports.trend(months),
+    queryFn: () => reports.trend(months, true),
   });
 
   const { data: categoryTotals = [] } = useQuery({
@@ -52,7 +52,7 @@ export default function Analytics() {
 
   // Chart data: add month label
   const trendData = trend.map((m: any) => ({
-    label: `${MONTH_NAMES[m.month - 1]} ${String(m.year).slice(2)}`,
+    label: `${MONTH_NAMES[m.month - 1]} '${String(m.year).slice(2)}`,
     income: m.income,
     expenses: Math.abs(m.expenses),
     net: m.net,
@@ -112,7 +112,7 @@ export default function Analytics() {
         <h3 className="text-sm font-semibold text-gray-400 mb-4">Net Worth</h3>
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={(netWorthData as any[]).map((m: any) => ({
-            label: `${MONTH_NAMES[m.month - 1]} ${String(m.year).slice(2)}`,
+            label: `${MONTH_NAMES[m.month - 1]} '${String(m.year).slice(2)}`,
             netWorth: m.netWorth,
           }))}>
             <defs>
@@ -144,11 +144,12 @@ export default function Analytics() {
               <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 11 }} tickFormatter={(v) => `$${fmt(v)}`} />
               <YAxis type="category" dataKey="name" tick={{ fill: '#d1d5db', fontSize: 12 }} width={130} />
               <Tooltip
+                cursor={false}
                 formatter={(v: number) => [`$${fmt(v)}`, 'Spent']}
                 contentStyle={{ background: '#111827', border: 'none', color: '#f9fafb' }}
                 itemStyle={{ color: '#f9fafb' }}
               />
-              <Bar dataKey="total" radius={[0, 3, 3, 0]}>
+              <Bar dataKey="total" radius={[0, 3, 3, 0]} activeBar={{ opacity: 0.75 }}>
                 {topCategories.map((c: any, i: number) => (
                   <Cell key={i} fill={c.color ?? FALLBACK_COLOR} />
                 ))}

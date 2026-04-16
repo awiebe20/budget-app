@@ -54,7 +54,32 @@ router.get('/summary', async (req: Request, res: Response) => {
     .filter((t) => Number(t.amount) < 0 && !t.category?.isFromSavings)
     .reduce((sum, t) => sum + effectiveAmount(t), 0);
 
-  res.json({ month, year, income, expenses, net: income + expenses });
+  // Non-essential: sum budgeted vs spent for non-essential expense categories
+  const nonEssentialBudgets = await prisma.budget.findMany({
+    where: { effectiveFrom: { lte: start } },
+    orderBy: { effectiveFrom: 'desc' },
+    distinct: ['categoryId'],
+    include: { category: true },
+  });
+  const toMonthlyNE = (amount: number, freq: string) => {
+    if (freq === 'QUARTERLY') return amount / 3;
+    if (freq === 'SEMI_ANNUAL') return amount / 6;
+    if (freq === 'ANNUAL') return amount / 12;
+    return amount;
+  };
+  const nonEssentialCatIds = new Set(
+    nonEssentialBudgets
+      .filter((b) => !b.category.isIncome && !b.category.isReimbursement && !b.category.isFromSavings && !b.category.isEssential)
+      .map((b) => b.categoryId)
+  );
+  const nonEssentialBudgeted = nonEssentialBudgets
+    .filter((b) => nonEssentialCatIds.has(b.categoryId))
+    .reduce((sum, b) => sum + toMonthlyNE(Number(b.amount), b.frequency), 0);
+  const nonEssentialSpent = transactions
+    .filter((t) => t.categoryId && nonEssentialCatIds.has(t.categoryId) && Number(t.amount) < 0)
+    .reduce((sum, t) => sum + Math.abs(effectiveAmount(t)), 0);
+
+  res.json({ month, year, income, expenses, net: income + expenses, nonEssentialBudgeted, nonEssentialSpent });
 });
 
 // GET /api/reports/by-category?month=3&year=2026
@@ -117,13 +142,51 @@ router.get('/by-category', async (req: Request, res: Response) => {
 
   const toMonthly = (amount: number, frequency: string) => {
     if (frequency === 'QUARTERLY') return amount / 3;
+    if (frequency === 'SEMI_ANNUAL') return amount / 6;
     if (frequency === 'ANNUAL') return amount / 12;
     return amount;
   };
 
+  const cadenceMonths: Record<string, number> = {
+    QUARTERLY: 3, SEMI_ANNUAL: 6, ANNUAL: 12,
+  };
+
+  // For non-monthly budgets, find the last transaction date so frontend can show coverage
+  const nonMonthlyBudgetCatIds = budgets
+    .filter((b) => b.frequency !== 'MONTHLY')
+    .map((b) => b.categoryId);
+
+  const lastTxByCategory: Record<number, Date> = {};
+  if (nonMonthlyBudgetCatIds.length > 0) {
+    const lookback = new Date(year, month - 1 - 12, 1);
+    const lastTxs = await prisma.transaction.findMany({
+      where: { categoryId: { in: nonMonthlyBudgetCatIds }, date: { gte: lookback }, amount: { lt: 0 } },
+      orderBy: { date: 'desc' },
+      select: { categoryId: true, date: true },
+    });
+    for (const tx of lastTxs) {
+      if (tx.categoryId && !lastTxByCategory[tx.categoryId]) {
+        lastTxByCategory[tx.categoryId] = tx.date;
+      }
+    }
+  }
+
   const result = budgets.map((b) => {
     const monthlyBudget = toMonthly(Number(b.amount), b.frequency);
     const spent = Math.abs(spendingMap[b.categoryId] || 0);
+    const cadence = cadenceMonths[b.frequency];
+    const lastTxDate = lastTxByCategory[b.categoryId] ?? null;
+
+    let coveredThrough: string | null = null;
+    if (cadence && lastTxDate) {
+      const covered = new Date(lastTxDate);
+      covered.setMonth(covered.getMonth() + cadence);
+      const monthEnd = new Date(year, month, 0);
+      if (covered > monthEnd) {
+        coveredThrough = covered.toISOString();
+      }
+    }
+
     return {
       category: b.category,
       budgeted: monthlyBudget,
@@ -131,6 +194,7 @@ router.get('/by-category', async (req: Request, res: Response) => {
       frequency: b.frequency,
       spent,
       remaining: monthlyBudget - spent,
+      coveredThrough,
     };
   });
 
@@ -141,11 +205,14 @@ router.get('/by-category', async (req: Request, res: Response) => {
 // Monthly income vs expenses over the last N months
 router.get('/trend', async (req: Request, res: Response) => {
   const months = parseInt(req.query.months as string) || 6;
+  const completedOnly = req.query.completedOnly === 'true';
 
   const results = [];
   const now = new Date();
 
-  for (let i = months - 1; i >= 0; i--) {
+  // completedOnly: skip i=0 (current incomplete month)
+  const minI = completedOnly ? 1 : 0;
+  for (let i = months - 1; i >= minI; i--) {
     const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const month = date.getMonth() + 1;
     const year = date.getFullYear();

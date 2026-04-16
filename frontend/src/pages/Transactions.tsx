@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { transactions, categories, accounts, savings } from '../lib/api';
 import { fmt } from '../lib/format';
 import { useMonthContext } from '../lib/MonthContext';
-import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag, ChevronDown } from 'lucide-react';
+import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag, ChevronDown, ArrowLeft } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: 'date_desc',   label: 'Newest first' },
@@ -28,10 +29,32 @@ function defaultDateRange() {
 
 export default function Transactions() {
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const fromBudget = searchParams.get('from') === 'budget';
+  const paramCategoryId = searchParams.get('categoryId') ?? '';
+  const paramMonth = searchParams.get('month');
+  const paramYear = searchParams.get('year');
+
   const [selected, setSelected] = useState<any>(null);
   const [sort, setSort] = useState('date_desc');
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filters, setFilters] = useState({ ...EMPTY_FILTERS, categoryId: paramCategoryId });
   const { dateRange, setDateRange } = useMonthContext();
+
+  // When navigating from budget, lock the date range to that month
+  useEffect(() => {
+    if (fromBudget && paramMonth && paramYear) {
+      const m = parseInt(paramMonth);
+      const y = parseInt(paramYear);
+      const start = new Date(y, m - 1, 1).toISOString().split('T')[0];
+      const now = new Date();
+      const isCurrentMonth = now.getMonth() + 1 === m && now.getFullYear() === y;
+      const end = isCurrentMonth
+        ? now.toISOString().split('T')[0]
+        : new Date(y, m, 0).toISOString().split('T')[0];
+      setDateRange({ startDate: start, endDate: end });
+    }
+  }, []);
   const [showSort, setShowSort] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
@@ -160,6 +183,14 @@ export default function Transactions() {
     <div className="flex gap-4 items-start">
       {/* Main list */}
       <div className="flex-1 min-w-0 space-y-4">
+        {fromBudget && (
+          <button
+            onClick={() => navigate('/budget')}
+            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mb-1"
+          >
+            <ArrowLeft size={15} /> Back to Budget
+          </button>
+        )}
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold shrink-0">Transactions</h2>
           <input

@@ -64,7 +64,12 @@ export default function Dashboard() {
       <div className="grid grid-cols-4 gap-4">
         <StatCard label="Income This Month" value={summary?.income != null ? `$${fmt(summary.income)}` : '—'} color="text-green-400" />
         <StatCard label="Expenses This Month" value={`$${fmt(Math.abs(summary?.expenses ?? 0))}`} color="text-red-400" />
-        <StatCard label="Net" value={summary?.net != null ? `$${fmt(summary.net)}` : '—'} color={summary?.net >= 0 ? 'text-green-400' : 'text-red-400'} />
+        <StatCard
+          label="Flexible Budget Left"
+          value={summary?.nonEssentialBudgeted != null ? `$${fmt(Math.max(0, summary.nonEssentialBudgeted - summary.nonEssentialSpent))}` : '—'}
+          color={(summary?.nonEssentialBudgeted - summary?.nonEssentialSpent) >= 0 ? 'text-green-400' : 'text-red-400'}
+          subtitle={summary?.nonEssentialBudgeted > 0 ? `of $${fmt(summary.nonEssentialBudgeted)} flexible` : undefined}
+        />
         <StatCard label="Total Balance" value={`$${fmt(totalBalance)}`} color="text-blue-400" />
       </div>
 
@@ -76,8 +81,8 @@ export default function Dashboard() {
             <BarChart data={[{ name: 'Income', value: summary?.income ?? 0 }, { name: 'Expenses', value: Math.abs(summary?.expenses ?? 0) }]}>
               <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 12 }} />
               <YAxis tick={{ fill: '#9ca3af', fontSize: 12 }} domain={chartYMax ? [0, chartYMax] : undefined} />
-              <Tooltip formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#111827', border: 'none', color: '#f9fafb' }} itemStyle={{ color: '#f9fafb' }} />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+              <Tooltip cursor={false} formatter={(v: number) => `$${fmt(v)}`} contentStyle={{ background: '#1f2937', border: '1px solid #374151', color: '#f9fafb' }} itemStyle={{ color: '#f9fafb' }} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]} activeBar={{ opacity: 0.75 }}>
                 <Cell fill="#4ade80" />
                 <Cell fill="#f87171" />
               </Bar>
@@ -134,11 +139,12 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
+function StatCard({ label, value, color, subtitle }: { label: string; value: string; color: string; subtitle?: string }) {
   return (
     <div className="bg-gray-900 rounded-lg p-4">
       <p className="text-xs text-gray-400 mb-1">{label}</p>
       <p className={`text-xl font-bold ${color}`}>{value}</p>
+      {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   normalizeSimplefinTransaction,
 } from '../services/simplefin';
 import { generateFingerprint as generateLegacyFingerprint } from '../parsers/normalizer';
-import { buildMerchantCategoryMap, buildInternalTransferMerchants } from '../services/autoCategorize';
+import { buildMerchantCategoryMap, buildInternalTransferMerchants, isInternalTransferMatch } from '../services/autoCategorize';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -136,7 +136,7 @@ router.post('/sync', async (_req: Request, res: Response) => {
         continue;
       }
 
-      const isKnownTransfer = internalTransferMerchants.has(normalized.merchantNormalized);
+      const isKnownTransfer = isInternalTransferMatch(normalized.merchantNormalized, internalTransferMerchants);
       const rule = !isKnownTransfer ? merchantRules.get(normalized.merchantNormalized) : undefined;
       await prisma.transaction.create({
         data: {

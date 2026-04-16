@@ -27,6 +27,7 @@ export const categories = {
   create: (data: object) => api.post('/categories', data).then((r) => r.data),
   update: (id: number, data: object) => api.patch(`/categories/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/categories/${id}`).then((r) => r.data),
+  reorder: (order: { id: number; order: number }[]) => api.post('/categories/reorder', { order }).then((r) => r.data),
 };
 
 export const budgets = {
@@ -76,7 +77,7 @@ export const onboarding = {
 export const reports = {
   summary: (month: number, year: number) => api.get('/reports/summary', { params: { month, year } }).then((r) => r.data),
   byCategory: (month: number, year: number) => api.get('/reports/by-category', { params: { month, year } }).then((r) => r.data),
-  trend: (months: number) => api.get('/reports/trend', { params: { months } }).then((r) => r.data),
+  trend: (months: number, completedOnly = false) => api.get('/reports/trend', { params: { months, completedOnly } }).then((r) => r.data),
   categoryTotals: (months: number) => api.get('/reports/category-totals', { params: { months } }).then((r) => r.data),
   netWorth: (months: number) => api.get('/reports/net-worth', { params: { months } }).then((r) => r.data),
   upcomingBills: () => api.get('/reports/upcoming-bills').then((r) => r.data),

@@ -46,6 +46,8 @@ model Category {
   isIncome         Boolean        @default(false)
   isReimbursement  Boolean        @default(false)
   isFromSavings    Boolean        @default(false)
+  isEssential      Boolean        @default(false)
+  order            Int            @default(0)
   paycheckTiming   String         @default("CURRENT")
   transactions     Transaction[]
   budgets          Budget[]
