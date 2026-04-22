@@ -29,6 +29,11 @@ export default function Savings() {
   const formPercent = parseFloat(form.allocationPercent) || 0;
   const wouldExceed = formPercent > remainingPercent;
 
+  const editingGoal = goals.find((g) => g.id === editingId);
+  const editPercent = parseFloat(editForm.allocationPercent) || 0;
+  const editRemainingPercent = editingGoal ? 100 - (totalAllocatedPercent - editingGoal.allocationPercent) : 100;
+  const editWouldExceed = editPercent > editRemainingPercent;
+
   const createMutation = useMutation({
     mutationFn: () => savings.create({
       name: form.name,
@@ -228,15 +233,21 @@ export default function Savings() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-400 block mb-1">Allocation %</label>
+                      <label className="text-xs text-gray-400 block mb-1">
+                        Allocation %
+                        <span className="text-gray-500 ml-1">({editRemainingPercent.toFixed(0)}% remaining)</span>
+                      </label>
                       <input
                         type="number"
                         min={0}
                         max={100}
                         value={editForm.allocationPercent}
                         onChange={(e) => setEditForm({ ...editForm, allocationPercent: e.target.value })}
-                        className="bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full"
+                        className={`bg-gray-800 text-white rounded px-3 py-1.5 text-sm w-full ${editWouldExceed ? 'border border-red-500' : ''}`}
                       />
+                      {editWouldExceed && (
+                        <p className="text-xs text-red-400 mt-1">Exceeds remaining {editRemainingPercent.toFixed(0)}%</p>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -253,7 +264,7 @@ export default function Savings() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => saveEdit(goal.id)} className="text-green-400 hover:text-green-300 flex items-center gap-1 text-sm">
+                    <button onClick={() => saveEdit(goal.id)} disabled={editWouldExceed} className="text-green-400 hover:text-green-300 disabled:opacity-50 flex items-center gap-1 text-sm">
                       <Check size={14} /> Save
                     </button>
                     <button onClick={() => setEditingId(null)} className="text-gray-500 hover:text-white flex items-center gap-1 text-sm">

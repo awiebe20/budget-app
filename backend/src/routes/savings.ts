@@ -50,16 +50,38 @@ router.get('/', asyncHandler(async (_req: Request, res: Response) => {
 
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { name, targetAmount, allocationPercent, color } = req.body;
+  const newPercent = allocationPercent ?? 0;
+
+  const existing = await prisma.savingsGoal.aggregate({ _sum: { allocationPercent: true } });
+  const currentTotal = existing._sum.allocationPercent ?? 0;
+  if (currentTotal + newPercent > 100) {
+    return res.status(400).json({ error: `Allocation would exceed 100% (${(100 - currentTotal).toFixed(0)}% remaining)` });
+  }
+
   const goal = await prisma.savingsGoal.create({
-    data: { name, targetAmount, allocationPercent: allocationPercent ?? 0, color },
+    data: { name, targetAmount, allocationPercent: newPercent, color },
   });
   res.json(goal);
 }));
 
 router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
   const { name, targetAmount, allocationPercent, color } = req.body;
+
+  if (allocationPercent !== undefined) {
+    const existing = await prisma.savingsGoal.aggregate({
+      _sum: { allocationPercent: true },
+      where: { id: { not: id } },
+    });
+    const othersTotal = existing._sum.allocationPercent ?? 0;
+    if (othersTotal + allocationPercent > 100) {
+      return res.status(400).json({ error: `Allocation would exceed 100% (${(100 - othersTotal).toFixed(0)}% remaining)` });
+    }
+  }
+
   const goal = await prisma.savingsGoal.update({
-    where: { id: parseInt(req.params.id) },
+    where: { id },
     data: {
       ...(name !== undefined && { name }),
       ...(targetAmount !== undefined && { targetAmount }),
@@ -71,7 +93,9 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
-  await prisma.savingsGoal.delete({ where: { id: parseInt(req.params.id) } });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+  await prisma.savingsGoal.delete({ where: { id } });
   res.json({ success: true });
 }));
 

@@ -35,14 +35,18 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
-  await prisma.account.delete({ where: { id: parseInt(req.params.id) } });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+  await prisma.account.delete({ where: { id } });
   res.json({ success: true });
 }));
 
 router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
   const { name, balance, accountNumber } = req.body;
   const account = await prisma.account.update({
-    where: { id: parseInt(req.params.id) },
+    where: { id },
     data: {
       ...(name && { name }),
       ...(balance !== undefined && { balance }),

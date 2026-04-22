@@ -53,8 +53,10 @@ router.get('/people', asyncHandler(async (_req: Request, res: Response) => {
 
 // GET /api/transactions/:id
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
   const transaction = await prisma.transaction.findUnique({
-    where: { id: parseInt(req.params.id) },
+    where: { id },
     include: {
       category: true,
       account: { select: { name: true } },
@@ -68,10 +70,12 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 
 // PATCH /api/transactions/:id
 router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
   const { categoryId, notes, isRecurring, isInternalTransfer, reimbursedBy, savingsGoalId } = req.body;
 
   const updated = await prisma.transaction.update({
-    where: { id: parseInt(req.params.id) },
+    where: { id },
     data: {
       ...(categoryId !== undefined && { categoryId }),
       ...(notes !== undefined && { notes }),
@@ -88,11 +92,13 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
 
 // POST /api/transactions/:id/splits
 router.post('/:id/splits', asyncHandler(async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
   const { amount, owedBy } = req.body;
 
   const split = await prisma.transactionSplit.create({
     data: {
-      transactionId: parseInt(req.params.id),
+      transactionId: id,
       amount,
       owedBy,
     },
@@ -103,9 +109,11 @@ router.post('/:id/splits', asyncHandler(async (req: Request, res: Response) => {
 
 // PATCH /api/transactions/:id/splits/:splitId
 router.patch('/:id/splits/:splitId', asyncHandler(async (req: Request, res: Response) => {
+  const splitId = parseInt(req.params.splitId);
+  if (isNaN(splitId)) return res.status(400).json({ error: 'Invalid splitId' });
   const { owedBy } = req.body;
   const split = await prisma.transactionSplit.update({
-    where: { id: parseInt(req.params.splitId) },
+    where: { id: splitId },
     data: { ...(owedBy !== undefined && { owedBy }) },
   });
   res.json(split);
@@ -114,9 +122,11 @@ router.patch('/:id/splits/:splitId', asyncHandler(async (req: Request, res: Resp
 // DELETE /api/transactions/:id/splits/:splitId
 router.delete('/:id/splits/:splitId', asyncHandler(async (req: Request, res: Response) => {
   const txId = parseInt(req.params.id);
+  const splitId = parseInt(req.params.splitId);
+  if (isNaN(txId) || isNaN(splitId)) return res.status(400).json({ error: 'Invalid id' });
 
   await prisma.transactionSplit.delete({
-    where: { id: parseInt(req.params.splitId) },
+    where: { id: splitId },
   });
 
   // Rebalance remaining splits evenly

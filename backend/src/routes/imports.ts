@@ -8,7 +8,7 @@ import { buildMerchantCategoryMap, buildInternalTransferMerchants, isInternalTra
 
 const router = Router();
 const prisma = new PrismaClient();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // POST /api/imports/preview - parse and return transactions without saving
 // Also returns detectedAccountId if account number matches a stored account
@@ -76,7 +76,7 @@ router.post('/confirm', upload.single('file'), asyncHandler(async (req: Request,
   try {
     const accountId = parseInt(req.body.accountId);
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    if (!accountId) return res.status(400).json({ error: 'accountId required' });
+    if (isNaN(accountId) || !accountId) return res.status(400).json({ error: 'accountId required' });
 
     const content = req.file.buffer.toString('utf-8');
 

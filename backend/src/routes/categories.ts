@@ -33,9 +33,11 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
   const { name, color, isReimbursement, isEssential, paycheckTiming } = req.body;
   const category = await prisma.category.update({
-    where: { id: parseInt(req.params.id) },
+    where: { id },
     data: {
       ...(name && { name }),
       ...(color && { color }),
@@ -48,7 +50,9 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
-  await prisma.category.delete({ where: { id: parseInt(req.params.id) } });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+  await prisma.category.delete({ where: { id } });
   res.json({ success: true });
 }));
 

@@ -23,24 +23,6 @@ router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
   res.json({ connected: result.ok, hasAccessUrl: true, error: result.error ?? null, staleAccounts: result.staleAccounts });
 }));
 
-// Debug: show raw SimpleFIN data including org errors
-router.get('/debug', asyncHandler(async (_req: Request, res: Response) => {
-  const accounts = await fetchSimplefinData();
-  res.json(accounts.map(a => ({
-    name: a.name,
-    id: a.id,
-    balance: a.balance,
-    orgErrors: (a as any).org?.errors ?? [],
-    txCount: a.transactions.length,
-    txDates: a.transactions.map((t: any) => ({
-      id: t.id,
-      date: new Date(t.posted * 1000).toISOString().split('T')[0],
-      amount: t.amount,
-      description: t.description,
-    })).sort((a: any, b: any) => b.date.localeCompare(a.date)).slice(0, 5),
-  })));
-}));
-
 // One-time token exchange
 router.post('/connect', asyncHandler(async (req: Request, res: Response) => {
   const { setupToken } = req.body;
