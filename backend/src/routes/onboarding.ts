@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { asyncHandler } from '../lib/asyncHandler';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-router.get('/status', async (_req: Request, res: Response) => {
+router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
   const [simplefinSetting, accountCount, simpleFinTxCount, categoryCount, budgetCount] =
     await Promise.all([
       prisma.setting.findUnique({ where: { key: 'simplefin_access_url' } }),
@@ -21,6 +22,6 @@ router.get('/status', async (_req: Request, res: Response) => {
     categoriesSetUp: categoryCount > 0,
     budgetsSetUp: budgetCount > 0,
   });
-});
+}));
 
 export default router;

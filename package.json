@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.abundancebudgeting.app",
@@ -48,9 +48,10 @@
       "icon": "electron/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "allowToChangeInstallationDirectory": false,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "differentialPackage": false
     },
     "publish": {
       "provider": "github",

@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { asyncHandler } from '../lib/asyncHandler';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// GET /api/settlements/pending - unsettled splits grouped by person, minus reimbursements
-router.get('/pending', async (_req: Request, res: Response) => {
+router.get('/pending', asyncHandler(async (_req: Request, res: Response) => {
   const [splits, reimbursements] = await Promise.all([
     prisma.transactionSplit.findMany({
       where: { settlementId: null },
@@ -20,14 +20,12 @@ router.get('/pending', async (_req: Request, res: Response) => {
     }),
   ]);
 
-  // Sum reimbursements per person
   const reimbursedTotals: Record<string, number> = {};
   for (const tx of reimbursements) {
     const person = tx.reimbursedBy!;
     reimbursedTotals[person] = (reimbursedTotals[person] ?? 0) + Math.abs(Number(tx.amount));
   }
 
-  // Group splits by person
   const grouped = splits.reduce<Record<string, typeof splits>>((acc, split) => {
     if (!acc[split.owedBy]) acc[split.owedBy] = [];
     acc[split.owedBy].push(split);
@@ -45,10 +43,9 @@ router.get('/pending', async (_req: Request, res: Response) => {
   }).filter(p => p.total > 0);
 
   res.json(result);
-});
+}));
 
-// POST /api/settlements - settle all pending splits for a person
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { person, periodStart, periodEnd } = req.body;
 
   const pendingSplits = await prisma.transactionSplit.findMany({
@@ -77,15 +74,14 @@ router.post('/', async (req: Request, res: Response) => {
   });
 
   res.json(settlement);
-});
+}));
 
-// GET /api/settlements - settlement history
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const settlements = await prisma.settlement.findMany({
     orderBy: { settledDate: 'desc' },
     include: { splits: { include: { transaction: { select: { merchantNormalized: true, date: true } } } } },
   });
   res.json(settlements);
-});
+}));
 
 export default router;

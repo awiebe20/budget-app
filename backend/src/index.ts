@@ -11,6 +11,7 @@ import savingsRoutes from './routes/savings';
 import reportRoutes from './routes/reports';
 import simpleFinRoutes from './routes/simplefin';
 import onboardingRoutes from './routes/onboarding';
+import exportRoutes from './routes/export';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -42,6 +43,7 @@ app.use('/api/savings', savingsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/simplefin', simpleFinRoutes);
 app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/export', exportRoutes);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

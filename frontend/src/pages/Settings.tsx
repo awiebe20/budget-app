@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { accounts, simplefin, onboarding, transactions, imports } from '../lib/api';
+import { accounts, simplefin, onboarding, transactions, imports, exportData } from '../lib/api';
 import { fmt } from '../lib/format';
 import { Trash2, CheckCircle, Circle, ChevronRight, ChevronDown, Upload, AlertCircle, X, Loader } from 'lucide-react';
 
@@ -172,6 +172,26 @@ export default function Settings() {
     queryFn: transactions.internalTransfers,
     enabled: showInternalTransfers,
   });
+
+  const [exportState, setExportState] = useState<'idle' | 'loading' | 'done'>('idle');
+
+  const handleExport = async () => {
+    setExportState('loading');
+    try {
+      const res = await fetch(exportData.url());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `abundance-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportState('done');
+      setTimeout(() => setExportState('idle'), 6000);
+    } catch {
+      setExportState('idle');
+    }
+  };
 
   const unmarkTransferMutation = useMutation({
     mutationFn: (id: number) => transactions.update(id, { isInternalTransfer: false }),
@@ -464,6 +484,30 @@ export default function Settings() {
             )}
           </div>
         )}
+      </section>
+
+      {/* Data Export */}
+      <section className="space-y-3">
+        <h3 className="text-base font-semibold text-white">Data Export</h3>
+        <div className="bg-gray-900 rounded-lg p-5 space-y-3">
+          <p className="text-sm text-gray-400">
+            Download a full backup of your data as JSON — includes all transactions, categories, budgets, accounts, and savings goals.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleExport}
+              disabled={exportState !== 'idle'}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm"
+            >
+              {exportState === 'loading' ? 'Preparing...' : 'Download Backup'}
+            </button>
+            {exportState === 'done' && (
+              <span className="flex items-center gap-1.5 text-sm text-green-400">
+                <CheckCircle size={14} /> Success
+              </span>
+            )}
+          </div>
+        </div>
       </section>
 
       {/* Internal Transfers */}

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { asyncHandler } from '../lib/asyncHandler';
 import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
 import { parseCSV, detectBankFromContent, BankSource } from '../parsers';
@@ -11,7 +12,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // POST /api/imports/preview - parse and return transactions without saving
 // Also returns detectedAccountId if account number matches a stored account
-router.post('/preview', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/preview', upload.single('file'), asyncHandler(async (req: Request, res: Response) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -68,10 +69,10 @@ router.post('/preview', upload.single('file'), async (req: Request, res: Respons
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // POST /api/imports/confirm - save previewed transactions to DB
-router.post('/confirm', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/confirm', upload.single('file'), asyncHandler(async (req: Request, res: Response) => {
   try {
     const accountId = parseInt(req.body.accountId);
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -159,15 +160,15 @@ router.post('/confirm', upload.single('file'), async (req: Request, res: Respons
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
-});
+}));
 
 // GET /api/imports - list import history
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const logs = await prisma.importLog.findMany({
     orderBy: { importedAt: 'desc' },
     include: { account: { select: { name: true } } },
   });
   res.json(logs);
-});
+}));
 
 export default router;

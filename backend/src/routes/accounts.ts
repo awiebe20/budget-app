@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { asyncHandler } from '../lib/asyncHandler';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const accounts = await prisma.account.findMany({
     include: {
       imports: {
@@ -23,22 +24,22 @@ router.get('/', async (_req: Request, res: Response) => {
   }));
 
   res.json(result);
-});
+}));
 
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { name, type, currency, accountNumber, bank } = req.body;
   const account = await prisma.account.create({
     data: { name, type, currency, accountNumber, bank },
   });
   res.json(account);
-});
+}));
 
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   await prisma.account.delete({ where: { id: parseInt(req.params.id) } });
   res.json({ success: true });
-});
+}));
 
-router.patch('/:id', async (req: Request, res: Response) => {
+router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { name, balance, accountNumber } = req.body;
   const account = await prisma.account.update({
     where: { id: parseInt(req.params.id) },
@@ -49,6 +50,6 @@ router.patch('/:id', async (req: Request, res: Response) => {
     },
   });
   res.json(account);
-});
+}));
 
 export default router;

@@ -1,4 +1,4 @@
-import { useState, useRef, Fragment } from 'react';
+import { useState, useRef, Fragment, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { budgets, reports, categories } from '../lib/api';
@@ -57,12 +57,45 @@ export default function Budget() {
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [categoryForm, setCategoryForm] = useState({ preset: '', customName: '', color: CATEGORY_COLORS[0], isIncome: false, isReimbursement: false, budgetAmount: '', frequency: 'MONTHLY' as 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL' });
 
-  const selectedPreset = PRESET_CATEGORIES.find((p) => p.name === categoryForm.preset);
   const isCustom = categoryForm.preset === '__custom__';
   const resolvedName = isCustom ? categoryForm.customName : categoryForm.preset;
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<number | null>(null);
   const [dragInsertBeforeId, setDragInsertBeforeId] = useState<number | 'income-end' | 'expense-end' | null>(null);
   const dragIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let animFrame: number;
+    const MAX_SPEED = 12;
+
+    const handleDragOver = (e: DragEvent) => {
+      if (!dragIdRef.current) return;
+      cancelAnimationFrame(animFrame);
+      const container = document.querySelector('main');
+      if (!container) return;
+      const { clientY } = e;
+      const { innerHeight } = window;
+      const THRESHOLD = innerHeight * 0.15;
+      let speed = 0;
+      if (clientY < THRESHOLD) speed = -MAX_SPEED * (1 - clientY / THRESHOLD);
+      else if (clientY > innerHeight - THRESHOLD) speed = MAX_SPEED * (1 - (innerHeight - clientY) / THRESHOLD);
+      if (speed === 0) return;
+      const scroll = () => {
+        container.scrollBy(0, speed);
+        if (dragIdRef.current) animFrame = requestAnimationFrame(scroll);
+      };
+      animFrame = requestAnimationFrame(scroll);
+    };
+
+    const handleDragEnd = () => cancelAnimationFrame(animFrame);
+
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragend', handleDragEnd);
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragend', handleDragEnd);
+      cancelAnimationFrame(animFrame);
+    };
+  }, []);
 
   const { data: budgetData } = useQuery({
     queryKey: ['budgets-by-category', month, year],
@@ -256,7 +289,7 @@ export default function Budget() {
     return null;
   };
 
-  const renderCategoryRow = (cat: any, isIncome: boolean) => {
+  const renderCategoryRow = (cat: any, isIncome: boolean, nextCatId?: number | 'income-end' | 'expense-end') => {
     const budgeted = historicalBudgetMap[cat.id] ?? 0;
     const currentBudgetEntry = currentBudgetMap[cat.id];
     const currentBudget = currentBudgetEntry?.amount ?? 0;
@@ -278,8 +311,14 @@ export default function Budget() {
         className="group bg-gray-900 rounded-lg p-4 space-y-2"
         draggable
         onDragStart={() => { dragIdRef.current = cat.id; }}
-        onDragOver={(e) => { e.preventDefault(); if (dragIdRef.current !== cat.id) setDragInsertBeforeId(cat.id); }}
-        onDrop={() => handleDrop(cat.id)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (dragIdRef.current === cat.id) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          const inBottomHalf = e.clientY > rect.top + rect.height * 0.6;
+          setDragInsertBeforeId(inBottomHalf && nextCatId !== undefined ? nextCatId : cat.id);
+        }}
+        onDrop={(e) => { e.stopPropagation(); if (dragInsertBeforeId !== null && dragIdRef.current) handleDrop(dragInsertBeforeId as any); }}
         onDragEnd={() => { setDragInsertBeforeId(null); dragIdRef.current = null; }}
       >
         <div className="flex items-center justify-between">
@@ -688,38 +727,46 @@ export default function Budget() {
 
       {/* Income categories */}
       {incomeCategories.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (dragInsertBeforeId !== null && dragIdRef.current) handleDrop(dragInsertBeforeId as any); }}>
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Income</h3>
-          {incomeCategories.map((cat: any) => (
-            <Fragment key={cat.id}>
-              {dragInsertBeforeId === cat.id && dragIdRef.current !== cat.id && (
-                <div className="h-0.5 bg-blue-500 rounded mx-1" />
-              )}
-              {renderCategoryRow(cat, true)}
-            </Fragment>
-          ))}
+          {incomeCategories.map((cat: any, idx: number) => {
+            const next = incomeCategories[idx + 1];
+            const nextId: number | 'income-end' = next ? next.id : 'income-end';
+            return (
+              <Fragment key={cat.id}>
+                {dragInsertBeforeId === cat.id && dragIdRef.current !== cat.id && (
+                  <div className="h-0.5 bg-blue-500 rounded mx-1" />
+                )}
+                {renderCategoryRow(cat, true, nextId)}
+              </Fragment>
+            );
+          })}
           {dragInsertBeforeId === 'income-end' && <div className="h-0.5 bg-blue-500 rounded mx-1" />}
           <div
             className="h-2"
             onDragOver={(e) => { e.preventDefault(); setDragInsertBeforeId('income-end'); }}
-            onDrop={() => handleDrop('income-end')}
+            onDrop={(e) => { e.stopPropagation(); handleDrop('income-end'); }}
           />
         </div>
       )}
 
       {/* Expense categories */}
-      <div className="space-y-2">
+      <div className="space-y-2" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (dragInsertBeforeId !== null && dragIdRef.current) handleDrop(dragInsertBeforeId as any); }}>
         {incomeCategories.length > 0 && (
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Expenses</h3>
         )}
-        {expenseCategories.map((cat: any) => (
-          <Fragment key={cat.id}>
-            {dragInsertBeforeId === cat.id && dragIdRef.current !== cat.id && (
-              <div className="h-0.5 bg-blue-500 rounded mx-1" />
-            )}
-            {renderCategoryRow(cat, false)}
-          </Fragment>
-        ))}
+        {expenseCategories.map((cat: any, idx: number) => {
+          const next = expenseCategories[idx + 1];
+          const nextId: number | 'expense-end' = next ? next.id : 'expense-end';
+          return (
+            <Fragment key={cat.id}>
+              {dragInsertBeforeId === cat.id && dragIdRef.current !== cat.id && (
+                <div className="h-0.5 bg-blue-500 rounded mx-1" />
+              )}
+              {renderCategoryRow(cat, false, nextId)}
+            </Fragment>
+          );
+        })}
         {dragInsertBeforeId === 'expense-end' && <div className="h-0.5 bg-blue-500 rounded mx-1" />}
         <div
           className="h-2"

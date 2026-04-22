@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { asyncHandler } from '../lib/asyncHandler';
 import { PrismaClient } from '@prisma/client';
 import {
   exchangeSetupToken,
@@ -15,15 +16,15 @@ const router = Router();
 const prisma = new PrismaClient();
 
 // Check connection status (live ping to SimpleFIN)
-router.get('/status', async (_req: Request, res: Response) => {
+router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
   const accessUrl = await getAccessUrl();
   if (!accessUrl) return res.json({ connected: false, hasAccessUrl: false, staleAccounts: [] });
   const result = await testConnection();
   res.json({ connected: result.ok, hasAccessUrl: true, error: result.error ?? null, staleAccounts: result.staleAccounts });
-});
+}));
 
 // Debug: show raw SimpleFIN data including org errors
-router.get('/debug', async (_req: Request, res: Response) => {
+router.get('/debug', asyncHandler(async (_req: Request, res: Response) => {
   const accounts = await fetchSimplefinData();
   res.json(accounts.map(a => ({
     name: a.name,
@@ -38,10 +39,10 @@ router.get('/debug', async (_req: Request, res: Response) => {
       description: t.description,
     })).sort((a: any, b: any) => b.date.localeCompare(a.date)).slice(0, 5),
   })));
-});
+}));
 
 // One-time token exchange
-router.post('/connect', async (req: Request, res: Response) => {
+router.post('/connect', asyncHandler(async (req: Request, res: Response) => {
   const { setupToken } = req.body;
   if (!setupToken) return res.status(400).json({ error: 'setupToken required' });
 
@@ -49,10 +50,10 @@ router.post('/connect', async (req: Request, res: Response) => {
   const token = setupToken || process.env.SIMPLEFIN_TOKEN;
   await exchangeSetupToken(token);
   res.json({ success: true });
-});
+}));
 
 // Sync transactions from SimpleFIN
-router.post('/sync', async (_req: Request, res: Response) => {
+router.post('/sync', asyncHandler(async (_req: Request, res: Response) => {
   let accounts;
   try {
     accounts = await fetchSimplefinData();
@@ -151,6 +152,6 @@ router.post('/sync', async (_req: Request, res: Response) => {
 
   const warnings = getAccountWarnings(accounts);
   res.json({ newCount, dupCount, warnings });
-});
+}));
 
 export default router;

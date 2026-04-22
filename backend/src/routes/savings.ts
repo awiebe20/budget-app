@@ -1,16 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { asyncHandler } from '../lib/asyncHandler';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// GET /api/savings — goals with computed balances
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const [goals, savingsAccounts] = await Promise.all([
     prisma.savingsGoal.findMany({
-      include: {
-        transactions: { select: { amount: true } },
-      },
+      include: { transactions: { select: { amount: true } } },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.account.findMany({
@@ -48,19 +46,17 @@ router.get('/', async (_req: Request, res: Response) => {
     totalAllocatedPercent,
     unallocatedBalance: ((100 - totalAllocatedPercent) / 100) * totalSavingsBalance,
   });
-});
+}));
 
-// POST /api/savings
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const { name, targetAmount, allocationPercent, color } = req.body;
   const goal = await prisma.savingsGoal.create({
     data: { name, targetAmount, allocationPercent: allocationPercent ?? 0, color },
   });
   res.json(goal);
-});
+}));
 
-// PATCH /api/savings/:id
-router.patch('/:id', async (req: Request, res: Response) => {
+router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { name, targetAmount, allocationPercent, color } = req.body;
   const goal = await prisma.savingsGoal.update({
     where: { id: parseInt(req.params.id) },
@@ -72,12 +68,11 @@ router.patch('/:id', async (req: Request, res: Response) => {
     },
   });
   res.json(goal);
-});
+}));
 
-// DELETE /api/savings/:id
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   await prisma.savingsGoal.delete({ where: { id: parseInt(req.params.id) } });
   res.json({ success: true });
-});
+}));
 
 export default router;

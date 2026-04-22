@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { asyncHandler } from '../lib/asyncHandler';
 import { PrismaClient } from '@prisma/client';
 
 const router = Router();
@@ -6,7 +7,7 @@ const prisma = new PrismaClient();
 
 // GET /api/reports/summary?month=3&year=2026
 // Dashboard: total income vs total expenses for a given month
-router.get('/summary', async (req: Request, res: Response) => {
+router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
   const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
   const year = parseInt(req.query.year as string) || new Date().getFullYear();
 
@@ -80,11 +81,11 @@ router.get('/summary', async (req: Request, res: Response) => {
     .reduce((sum, t) => sum + Math.abs(effectiveAmount(t)), 0);
 
   res.json({ month, year, income, expenses, net: income + expenses, nonEssentialBudgeted, nonEssentialSpent });
-});
+}));
 
 // GET /api/reports/by-category?month=3&year=2026
 // Budget view: spending per category vs budget limit
-router.get('/by-category', async (req: Request, res: Response) => {
+router.get('/by-category', asyncHandler(async (req: Request, res: Response) => {
   const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
   const year = parseInt(req.query.year as string) || new Date().getFullYear();
 
@@ -199,11 +200,11 @@ router.get('/by-category', async (req: Request, res: Response) => {
   });
 
   res.json(result);
-});
+}));
 
 // GET /api/reports/trend?months=6
 // Monthly income vs expenses over the last N months
-router.get('/trend', async (req: Request, res: Response) => {
+router.get('/trend', asyncHandler(async (req: Request, res: Response) => {
   const months = parseInt(req.query.months as string) || 6;
   const completedOnly = req.query.completedOnly === 'true';
 
@@ -241,11 +242,11 @@ router.get('/trend', async (req: Request, res: Response) => {
   }
 
   res.json(results);
-});
+}));
 
 // GET /api/reports/category-totals?months=6
 // Total spending per category over a period (for analytics)
-router.get('/category-totals', async (req: Request, res: Response) => {
+router.get('/category-totals', asyncHandler(async (req: Request, res: Response) => {
   const months = parseInt(req.query.months as string) || 6;
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
@@ -277,11 +278,11 @@ router.get('/category-totals', async (req: Request, res: Response) => {
 
   const result = Object.values(map).sort((a, b) => b.total - a.total);
   res.json(result);
-});
+}));
 
 // GET /api/reports/net-worth?months=12
 // Uses stored balance snapshots for accuracy. Falls back to transaction reconstruction only when no snapshot exists.
-router.get('/net-worth', async (req: Request, res: Response) => {
+router.get('/net-worth', asyncHandler(async (req: Request, res: Response) => {
   const months = parseInt(req.query.months as string) || 12;
   const now = new Date();
 
@@ -298,7 +299,7 @@ router.get('/net-worth', async (req: Request, res: Response) => {
 
   const points = [];
 
-  for (let i = months - 1; i >= 0; i--) {
+  for (let i = months - 1; i >= 1; i--) {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
 
     let netWorth = 0;
@@ -327,13 +328,13 @@ router.get('/net-worth', async (req: Request, res: Response) => {
   }
 
   res.json(points);
-});
+}));
 
 // GET /api/reports/upcoming-bills
 // Recurring transactions projected to next occurrence
-router.get('/upcoming-bills', async (_req: Request, res: Response) => {
+router.get('/upcoming-bills', asyncHandler(async (_req: Request, res: Response) => {
   const recurring = await prisma.transaction.findMany({
-    where: { isRecurring: true },
+    where: { isRecurring: true, amount: { lt: 0 } },
     orderBy: { date: 'desc' },
     distinct: ['merchantNormalized'],
     include: { category: { select: { name: true } } },
@@ -357,6 +358,6 @@ router.get('/upcoming-bills', async (_req: Request, res: Response) => {
   upcoming.sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime());
 
   res.json(upcoming);
-});
+}));
 
 export default router;

@@ -74,6 +74,10 @@ export const onboarding = {
   status: () => api.get('/onboarding/status').then((r) => r.data),
 };
 
+export const exportData = {
+  url: () => `${(import.meta.env.VITE_API_BASE as string) || '/api'}/export`,
+};
+
 export const reports = {
   summary: (month: number, year: number) => api.get('/reports/summary', { params: { month, year } }).then((r) => r.data),
   byCategory: (month: number, year: number) => api.get('/reports/by-category', { params: { month, year } }).then((r) => r.data),

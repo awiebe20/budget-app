@@ -42,16 +42,20 @@ export default function Analytics() {
   });
 
   // Summary stats across the period
-  const totalIncome  = trend.reduce((s: number, m: any) => s + m.income, 0);
-  const totalExpenses = trend.reduce((s: number, m: any) => s + Math.abs(m.expenses), 0);
-  const totalNet     = trend.reduce((s: number, m: any) => s + m.net, 0);
-  const avgIncome    = trend.length ? totalIncome / trend.length : 0;
-  const avgExpenses  = trend.length ? totalExpenses / trend.length : 0;
-  const avgNet       = trend.length ? totalNet / trend.length : 0;
+  const firstDataIdx = trend.findIndex((m: any) => m.income !== 0 || m.expenses !== 0);
+  const trimmedTrend = firstDataIdx > 0 ? trend.slice(firstDataIdx) : trend;
+  const trimmedNetWorth = firstDataIdx > 0 ? (netWorthData as any[]).slice(firstDataIdx) : netWorthData as any[];
+
+  const totalIncome  = trimmedTrend.reduce((s: number, m: any) => s + m.income, 0);
+  const totalExpenses = trimmedTrend.reduce((s: number, m: any) => s + Math.abs(m.expenses), 0);
+  const totalNet     = trimmedTrend.reduce((s: number, m: any) => s + m.net, 0);
+  const avgIncome    = trimmedTrend.length ? totalIncome / trimmedTrend.length : 0;
+  const avgExpenses  = trimmedTrend.length ? totalExpenses / trimmedTrend.length : 0;
+  const avgNet       = trimmedTrend.length ? totalNet / trimmedTrend.length : 0;
   const savingsRate  = totalIncome > 0 ? (totalNet / totalIncome) * 100 : 0;
 
   // Chart data: add month label
-  const trendData = trend.map((m: any) => ({
+  const trendData = trimmedTrend.map((m: any) => ({
     label: `${MONTH_NAMES[m.month - 1]} '${String(m.year).slice(2)}`,
     income: m.income,
     expenses: Math.abs(m.expenses),
@@ -111,7 +115,7 @@ export default function Analytics() {
       <div className="bg-gray-900 rounded-lg p-5">
         <h3 className="text-sm font-semibold text-gray-400 mb-4">Net Worth</h3>
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={(netWorthData as any[]).map((m: any) => ({
+          <AreaChart data={trimmedNetWorth.map((m: any) => ({
             label: `${MONTH_NAMES[m.month - 1]} '${String(m.year).slice(2)}`,
             netWorth: m.netWorth,
           }))}>
