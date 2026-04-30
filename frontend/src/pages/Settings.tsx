@@ -27,6 +27,12 @@ const ACCOUNT_TYPES = ['CHECKING', 'SAVINGS', 'CREDIT'];
 const BANK_OPTIONS = [
   { value: 'CAPITAL_ONE', label: 'Capital One' },
   { value: 'HERITAGE', label: 'Heritage Bank' },
+  { value: 'CHASE', label: 'Chase' },
+  { value: 'BANK_OF_AMERICA', label: 'Bank of America' },
+  { value: 'WELLS_FARGO', label: 'Wells Fargo' },
+  { value: 'CITIBANK', label: 'Citibank' },
+  { value: 'US_BANK', label: 'US Bank' },
+  { value: 'CUSTOM', label: 'Other...' },
 ];
 
 export default function Settings() {
@@ -86,15 +92,20 @@ export default function Settings() {
   // Accounts
   const { data: accountList } = useQuery({ queryKey: ['accounts'], queryFn: accounts.list });
   const [showAccountForm, setShowAccountForm] = useState(false);
-  const [accountForm, setAccountForm] = useState({ name: '', type: 'CHECKING', accountNumber: '', bank: '' });
+  const [accountForm, setAccountForm] = useState({ name: '', type: 'CHECKING', accountNumber: '', bank: '', customBank: '' });
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState<number | null>(null);
 
   const createAccountMutation = useMutation({
-    mutationFn: () => accounts.create(accountForm),
+    mutationFn: () => accounts.create({
+      name: accountForm.name,
+      type: accountForm.type,
+      accountNumber: accountForm.accountNumber,
+      bank: accountForm.bank === 'CUSTOM' ? accountForm.customBank : accountForm.bank,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] });
       qc.invalidateQueries({ queryKey: ['onboarding'] });
-      setAccountForm({ name: '', type: 'CHECKING', accountNumber: '', bank: '' });
+      setAccountForm({ name: '', type: 'CHECKING', accountNumber: '', bank: '', customBank: '' });
       setShowAccountForm(false);
     },
   });
@@ -339,7 +350,7 @@ export default function Settings() {
                 <label className="text-xs text-gray-400 block mb-1">Bank</label>
                 <select
                   value={accountForm.bank}
-                  onChange={(e) => setAccountForm({ ...accountForm, bank: e.target.value })}
+                  onChange={(e) => setAccountForm({ ...accountForm, bank: e.target.value, customBank: '' })}
                   className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full"
                 >
                   <option value="">Select bank...</option>
@@ -347,6 +358,15 @@ export default function Settings() {
                     <option key={b.value} value={b.value}>{b.label}</option>
                   ))}
                 </select>
+                {accountForm.bank === 'CUSTOM' && (
+                  <input
+                    type="text"
+                    placeholder="Enter bank name..."
+                    value={accountForm.customBank}
+                    onChange={(e) => setAccountForm({ ...accountForm, customBank: e.target.value })}
+                    className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full mt-2"
+                  />
+                )}
               </div>
               <div>
                 <label className="text-xs text-gray-400 block mb-1">Account Number</label>
@@ -363,7 +383,7 @@ export default function Settings() {
               </div>
             </div>
             <button
-              disabled={!accountForm.name || (accountForm.accountNumber.length > 0 && accountForm.accountNumber.length < 4) || createAccountMutation.isPending}
+              disabled={!accountForm.name || (accountForm.accountNumber.length > 0 && accountForm.accountNumber.length < 4) || (accountForm.bank === 'CUSTOM' && !accountForm.customBank) || createAccountMutation.isPending}
               onClick={() => createAccountMutation.mutate()}
               className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm"
             >
@@ -382,7 +402,7 @@ export default function Settings() {
                     <p className="font-medium text-white text-sm">{account.name}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {account.type.charAt(0) + account.type.slice(1).toLowerCase()}
-                      {account.bank && ` · ${account.bank === 'CAPITAL_ONE' ? 'Capital One' : 'Heritage'}`}
+                      {account.bank && ` · ${BANK_OPTIONS.find((b) => b.value === account.bank)?.label ?? account.bank}`}
                       {account.accountNumber && ` · ...${account.accountNumber.slice(-4)}`}
                     </p>
                   </div>

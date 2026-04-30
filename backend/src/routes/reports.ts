@@ -26,7 +26,7 @@ router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
   const [transactions, shiftedIncome] = await Promise.all([
     prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-      select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true } } },
+      select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true, isReimbursement: true, isIncome: true } } },
     }),
     nextMonthCatIds.size > 0
       ? prisma.transaction.findMany({
@@ -35,7 +35,7 @@ router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
             isInternalTransfer: false,
             categoryId: { in: [...nextMonthCatIds] },
           },
-          select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true } } },
+          select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true, isReimbursement: true, isIncome: true } } },
         })
       : Promise.resolve([]),
   ]);
@@ -47,8 +47,8 @@ router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
 
   // Income = current-month non-shifted + previous-month shifted (as next-month income)
   const income = [
-    ...transactions.filter((t) => Number(t.amount) > 0 && !t.reimbursedBy && !nextMonthCatIds.has(t.categoryId!)),
-    ...shiftedIncome.filter((t) => Number(t.amount) > 0 && !t.reimbursedBy),
+    ...transactions.filter((t) => Number(t.amount) > 0 && t.category?.isIncome === true && !nextMonthCatIds.has(t.categoryId!)),
+    ...shiftedIncome.filter((t) => Number(t.amount) > 0 && t.category?.isIncome === true),
   ].reduce((sum, t) => sum + effectiveAmount(t), 0);
 
   const expenses = transactions
@@ -222,7 +222,7 @@ router.get('/trend', asyncHandler(async (req: Request, res: Response) => {
 
     const transactions = await prisma.transaction.findMany({
       where: { date: { gte: start, lte: end }, isInternalTransfer: false },
-      select: { amount: true, reimbursedBy: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true } } },
+      select: { amount: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true, isIncome: true } } },
     });
 
     const effectiveAmt = (t: { amount: any, splits: { amount: any }[] }) => {
@@ -231,7 +231,7 @@ router.get('/trend', asyncHandler(async (req: Request, res: Response) => {
     };
 
     const income = transactions
-      .filter((t) => Number(t.amount) > 0 && !t.reimbursedBy)
+      .filter((t) => Number(t.amount) > 0 && t.category?.isIncome === true)
       .reduce((sum, t) => sum + effectiveAmt(t), 0);
 
     const expenses = transactions
@@ -340,10 +340,14 @@ router.get('/upcoming-bills', asyncHandler(async (_req: Request, res: Response) 
     include: { category: { select: { name: true } } },
   });
 
+  const now = new Date();
   const upcoming = recurring.map((t) => {
     const lastDate = new Date(t.date);
     const nextDate = new Date(lastDate);
     nextDate.setMonth(nextDate.getMonth() + 1);
+    while (nextDate < now) {
+      nextDate.setMonth(nextDate.getMonth() + 1);
+    }
 
     return {
       merchant: t.merchantNormalized,

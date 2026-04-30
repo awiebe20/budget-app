@@ -119,6 +119,25 @@ router.post('/sync', asyncHandler(async (_req: Request, res: Response) => {
         continue;
       }
 
+      // Final fallback: match by accountId + date + amount
+      // Handles SimpleFIN transaction ID rotation after reconnecting an account
+      const dateAmountDup = await prisma.transaction.findFirst({
+        where: {
+          accountId: account.id,
+          date: normalized.date,
+          amount: normalized.amount,
+        },
+      });
+
+      if (dateAmountDup) {
+        await prisma.transaction.update({
+          where: { id: dateAmountDup.id },
+          data: { fingerprint: normalized.fingerprint },
+        });
+        dupCount++;
+        continue;
+      }
+
       const isKnownTransfer = isInternalTransferMatch(normalized.merchantNormalized, internalTransferMerchants);
       const rule = !isKnownTransfer ? merchantRules.get(normalized.merchantNormalized) : undefined;
       await prisma.transaction.create({

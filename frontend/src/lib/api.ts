@@ -20,6 +20,7 @@ export const transactions = {
   deleteSplit: (id: number, splitId: number) => api.delete(`/transactions/${id}/splits/${splitId}`).then((r) => r.data),
   people: () => api.get('/transactions/people').then((r) => r.data),
   internalTransfers: () => api.get('/transactions/internal-transfers').then((r) => r.data),
+  dedup: () => api.post('/transactions/dedup').then((r) => r.data),
 };
 
 export const categories = {

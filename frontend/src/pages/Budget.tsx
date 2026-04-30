@@ -621,18 +621,17 @@ export default function Budget() {
                   />
                   <label htmlFor="isReimbursement" className="text-xs text-gray-400">Reimbursement category</label>
                 </div>
-                {!categoryForm.isIncome && !categoryForm.isReimbursement && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="isEssential"
-                      checked={categoryForm.isReimbursement ? false : (categoryForm as any).isEssential ?? false}
-                      onChange={(e) => setCategoryForm({ ...categoryForm, isReimbursement: false, isEssential: e.target.checked } as any)}
-                      className="w-4 h-4"
-                    />
-                    <label htmlFor="isEssential" className="text-xs text-gray-400">Fixed expense</label>
-                  </div>
-                )}
+              </div>
+            )}
+
+            {!categoryForm.isIncome && !categoryForm.isReimbursement && categoryForm.preset !== '' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCategoryForm({ ...categoryForm, isEssential: !((categoryForm as any).isEssential ?? false) } as any)}
+                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${(categoryForm as any).isEssential ? 'border-orange-500 text-orange-400' : 'border-gray-600 text-gray-500 hover:border-gray-400'}`}
+                >
+                  {(categoryForm as any).isEssential ? 'Fixed' : 'Flexible'}
+                </button>
               </div>
             )}
           </div>

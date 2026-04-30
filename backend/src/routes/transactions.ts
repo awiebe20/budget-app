@@ -31,6 +31,44 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   res.json(transactions);
 }));
 
+// POST /api/transactions/dedup — remove duplicate transactions (same accountId + date + amount)
+router.post('/dedup', asyncHandler(async (_req: Request, res: Response) => {
+  const all = await prisma.transaction.findMany({
+    select: { id: true, accountId: true, date: true, amount: true, categoryId: true, notes: true },
+    orderBy: { id: 'asc' },
+  });
+
+  // Group by accountId|date|amount
+  const groups = new Map<string, typeof all>();
+  for (const tx of all) {
+    const key = `${tx.accountId}|${tx.date.toISOString()}|${Number(tx.amount).toFixed(2)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(tx);
+  }
+
+  const toDelete: number[] = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    // Keep the one with a category, or notes, falling back to lowest id
+    const keeper = group.sort((a, b) => {
+      if (a.categoryId && !b.categoryId) return -1;
+      if (!a.categoryId && b.categoryId) return 1;
+      if (a.notes && !b.notes) return -1;
+      if (!a.notes && b.notes) return 1;
+      return a.id - b.id;
+    })[0];
+    for (const tx of group) {
+      if (tx.id !== keeper.id) toDelete.push(tx.id);
+    }
+  }
+
+  if (toDelete.length > 0) {
+    await prisma.transaction.deleteMany({ where: { id: { in: toDelete } } });
+  }
+
+  res.json({ removed: toDelete.length });
+}));
+
 // GET /api/transactions/internal-transfers
 router.get('/internal-transfers', asyncHandler(async (_req: Request, res: Response) => {
   const transactions = await prisma.transaction.findMany({
