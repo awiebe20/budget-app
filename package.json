@@ -1,6 +1,6 @@
 {
   "name": "abundance-budgeting",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Abundance Budgeting — personal finance tracker",
   "main": "electron/main.js",
   "scripts": {
@@ -45,7 +45,8 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "electron/icon.ico"
+      "icon": "electron/icon.ico",
+      "artifactName": "Abundance-Budgeting-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": true,
@@ -60,6 +61,7 @@
     }
   },
   "dependencies": {
+    "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3"
   }
 }

@@ -2,6 +2,8 @@ const { app, BrowserWindow, dialog, Menu, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+const log = require('electron-log');
+log.transports.file.level = 'info';
 
 const BACKEND_PORT = 3001;
 let mainWindow;
@@ -100,14 +102,19 @@ function setupAutoUpdater() {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.disableWebInstaller = true;
 
   autoUpdater.on('update-downloaded', () => {
     if (mainWindow) mainWindow.webContents.send('update-downloaded');
   });
 
-  autoUpdater.on('error', (err) => {
-    console.error('Auto-updater error:', err);
-  });
+  autoUpdater.logger = log;
+
+  autoUpdater.on('checking-for-update', () => log.info('Checking for update...'));
+  autoUpdater.on('update-available', (info) => log.info('Update available:', info.version));
+  autoUpdater.on('update-not-available', (info) => log.info('No update available, current:', info.version));
+  autoUpdater.on('download-progress', (p) => log.info(`Download progress: ${Math.round(p.percent)}%`));
+  autoUpdater.on('error', (err) => log.error('Auto-updater error:', err));
 
   // Check on startup, then every 4 hours
   autoUpdater.checkForUpdates();
