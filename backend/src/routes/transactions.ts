@@ -12,6 +12,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const transactions = await prisma.transaction.findMany({
     where: {
       isInternalTransfer: false,
+      isHidden: false,
       ...(startDate || endDate ? {
         date: {
           ...(startDate && { gte: new Date(startDate as string) }),
@@ -29,6 +30,31 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   });
 
   res.json(transactions);
+}));
+
+// POST /api/transactions — create a manual transaction
+router.post('/', asyncHandler(async (req: Request, res: Response) => {
+  const { accountId, date, amount, merchant, categoryId, notes } = req.body;
+  if (!accountId || !date || amount === undefined || !merchant) {
+    return res.status(400).json({ error: 'accountId, date, amount, and merchant are required' });
+  }
+  const fingerprint = `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const name = String(merchant).trim();
+  const transaction = await prisma.transaction.create({
+    data: {
+      accountId: parseInt(accountId),
+      date: new Date(date),
+      amount: parseFloat(amount),
+      merchantRaw: name,
+      merchantNormalized: name,
+      categoryId: categoryId ? parseInt(categoryId) : null,
+      notes: notes || null,
+      source: 'manual',
+      fingerprint,
+    },
+    include: { category: true, account: { select: { name: true } }, splits: true, savingsGoal: { select: { id: true, name: true, color: true } } },
+  });
+  res.json(transaction);
 }));
 
 // POST /api/transactions/dedup — remove duplicate transactions (same accountId + date + amount)
@@ -79,6 +105,16 @@ router.get('/internal-transfers', asyncHandler(async (_req: Request, res: Respon
   res.json(transactions);
 }));
 
+// GET /api/transactions/hidden
+router.get('/hidden', asyncHandler(async (_req: Request, res: Response) => {
+  const transactions = await prisma.transaction.findMany({
+    where: { isHidden: true },
+    include: { account: { select: { name: true } }, category: { select: { name: true } } },
+    orderBy: { date: 'desc' },
+  });
+  res.json(transactions);
+}));
+
 // GET /api/transactions/people — distinct owedBy names from splits
 router.get('/people', asyncHandler(async (_req: Request, res: Response) => {
   const splits = await prisma.transactionSplit.findMany({
@@ -110,7 +146,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
-  const { categoryId, notes, isRecurring, isInternalTransfer, reimbursedBy, savingsGoalId } = req.body;
+  const { categoryId, notes, isRecurring, isInternalTransfer, isHidden, reimbursedBy, savingsGoalId } = req.body;
 
   const updated = await prisma.transaction.update({
     where: { id },
@@ -119,6 +155,7 @@ router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
       ...(notes !== undefined && { notes }),
       ...(isRecurring !== undefined && { isRecurring }),
       ...(isInternalTransfer !== undefined && { isInternalTransfer }),
+      ...(isHidden !== undefined && { isHidden }),
       ...(reimbursedBy !== undefined && { reimbursedBy }),
       ...(savingsGoalId !== undefined && { savingsGoalId }),
     },

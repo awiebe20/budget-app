@@ -25,7 +25,7 @@ router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
 
   const [transactions, shiftedIncome] = await Promise.all([
     prisma.transaction.findMany({
-      where: { date: { gte: start, lte: end }, isInternalTransfer: false },
+      where: { date: { gte: start, lte: end }, isInternalTransfer: false, isHidden: false },
       select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true, isReimbursement: true, isIncome: true } } },
     }),
     nextMonthCatIds.size > 0
@@ -33,6 +33,7 @@ router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
           where: {
             date: { gte: prevStart, lte: prevEnd },
             isInternalTransfer: false,
+            isHidden: false,
             categoryId: { in: [...nextMonthCatIds] },
           },
           select: { amount: true, reimbursedBy: true, categoryId: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true, isReimbursement: true, isIncome: true } } },
@@ -97,7 +98,7 @@ router.get('/by-category', asyncHandler(async (req: Request, res: Response) => {
 
   const [transactions, budgets] = await Promise.all([
     prisma.transaction.findMany({
-      where: { date: { gte: start, lte: end }, isInternalTransfer: false, categoryId: { not: null } },
+      where: { date: { gte: start, lte: end }, isInternalTransfer: false, isHidden: false, categoryId: { not: null } },
       select: { amount: true, categoryId: true, splits: { select: { amount: true } } },
     }),
     prisma.budget.findMany({
@@ -118,6 +119,7 @@ router.get('/by-category', asyncHandler(async (req: Request, res: Response) => {
     ? await prisma.transaction.findMany({
         where: {
           date: { gte: prevStartBC, lte: prevEndBC },
+          isHidden: false,
           categoryId: { in: [...nextMonthBudgetCatIds] },
         },
         select: { amount: true, categoryId: true, splits: { select: { amount: true } } },
@@ -161,7 +163,7 @@ router.get('/by-category', asyncHandler(async (req: Request, res: Response) => {
   if (nonMonthlyBudgetCatIds.length > 0) {
     const lookback = new Date(year, month - 1 - 12, 1);
     const lastTxs = await prisma.transaction.findMany({
-      where: { categoryId: { in: nonMonthlyBudgetCatIds }, date: { gte: lookback }, amount: { lt: 0 } },
+      where: { categoryId: { in: nonMonthlyBudgetCatIds }, date: { gte: lookback }, isHidden: false, amount: { lt: 0 } },
       orderBy: { date: 'desc' },
       select: { categoryId: true, date: true },
     });
@@ -221,7 +223,7 @@ router.get('/trend', asyncHandler(async (req: Request, res: Response) => {
     const end = new Date(year, month, 0, 23, 59, 59);
 
     const transactions = await prisma.transaction.findMany({
-      where: { date: { gte: start, lte: end }, isInternalTransfer: false },
+      where: { date: { gte: start, lte: end }, isInternalTransfer: false, isHidden: false },
       select: { amount: true, splits: { select: { amount: true } }, category: { select: { isFromSavings: true, isIncome: true } } },
     });
 
@@ -256,6 +258,7 @@ router.get('/category-totals', asyncHandler(async (req: Request, res: Response) 
     where: {
       date: { gte: start, lte: end },
       isInternalTransfer: false,
+      isHidden: false,
       amount: { lt: 0 },
       category: { isReimbursement: false, isFromSavings: false },
       categoryId: { not: null },
@@ -292,7 +295,7 @@ router.get('/net-worth', asyncHandler(async (req: Request, res: Response) => {
       orderBy: { date: 'desc' },
     }),
     prisma.transaction.findMany({
-      where: { isInternalTransfer: false },
+      where: { isInternalTransfer: false, isHidden: false },
       select: { accountId: true, amount: true, date: true },
     }),
   ]);
@@ -334,7 +337,7 @@ router.get('/net-worth', asyncHandler(async (req: Request, res: Response) => {
 // Recurring transactions projected to next occurrence
 router.get('/upcoming-bills', asyncHandler(async (_req: Request, res: Response) => {
   const recurring = await prisma.transaction.findMany({
-    where: { isRecurring: true, amount: { lt: 0 } },
+    where: { isRecurring: true, isHidden: false, amount: { lt: 0 } },
     orderBy: { date: 'desc' },
     distinct: ['merchantNormalized'],
     include: { category: { select: { name: true } } },

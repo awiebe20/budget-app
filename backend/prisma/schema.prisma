@@ -73,6 +73,7 @@ model Transaction {
   fingerprint         String             @unique
   isRecurring         Boolean            @default(false)
   isInternalTransfer  Boolean            @default(false)
+  isHidden            Boolean            @default(false)
   importId            Int?
   import              ImportLog?         @relation(fields: [importId], references: [id])
   splits              TransactionSplit[]

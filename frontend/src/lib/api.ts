@@ -14,12 +14,14 @@ export const accounts = {
 
 export const transactions = {
   list: (params?: object) => api.get('/transactions', { params }).then((r) => r.data),
+  create: (data: object) => api.post('/transactions', data).then((r) => r.data),
   update: (id: number, data: object) => api.patch(`/transactions/${id}`, data).then((r) => r.data),
   addSplit: (id: number, data: object) => api.post(`/transactions/${id}/splits`, data).then((r) => r.data),
   updateSplit: (id: number, splitId: number, data: object) => api.patch(`/transactions/${id}/splits/${splitId}`, data).then((r) => r.data),
   deleteSplit: (id: number, splitId: number) => api.delete(`/transactions/${id}/splits/${splitId}`).then((r) => r.data),
   people: () => api.get('/transactions/people').then((r) => r.data),
   internalTransfers: () => api.get('/transactions/internal-transfers').then((r) => r.data),
+  hiddenTransactions: () => api.get('/transactions/hidden').then((r) => r.data),
   dedup: () => api.post('/transactions/dedup').then((r) => r.data),
 };
 

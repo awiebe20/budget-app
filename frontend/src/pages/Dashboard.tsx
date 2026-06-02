@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { reports, accounts, settlements, onboarding } from '../lib/api';
 import { fmt } from '../lib/format';
 import { CheckCircle, Circle } from 'lucide-react';
@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
@@ -19,6 +20,15 @@ export default function Dashboard() {
   const { data: ob } = useQuery({ queryKey: ['onboarding'], queryFn: onboarding.status });
 
   const totalOwed = pendingSplits?.reduce((sum: number, p: any) => sum + p.total, 0) ?? 0;
+
+  const settleMutation = useMutation({
+    mutationFn: (person: string) => {
+      const p = pendingSplits?.find((s: any) => s.person === person);
+      const dates = p?.splits?.map((s: any) => new Date(s.transaction.date).getTime()) ?? [Date.now()];
+      return settlements.settle({ person, periodStart: new Date(Math.min(...dates)).toISOString(), periodEnd: new Date(Math.max(...dates)).toISOString() });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pending-splits'] }),
+  });
   const totalBalance = accountList?.reduce((sum: number, a: any) => sum + Number(a.balance), 0) ?? 0;
   const budgetedIncome = budgetData?.filter((b: any) => b.category.isIncome).reduce((sum: number, b: any) => sum + b.budgeted, 0) ?? 0;
   const chartYMax = budgetedIncome > 0 ? Math.ceil(budgetedIncome * 1.15 / 500) * 500 : undefined;
@@ -126,9 +136,23 @@ export default function Dashboard() {
           <h3 className="text-sm font-semibold text-gray-400 mb-3">Outstanding Splits</h3>
           <div className="space-y-2">
             {pendingSplits?.map((p: any) => (
-              <div key={p.person} className="flex justify-between text-sm">
-                <span className="text-gray-300">{p.person}</span>
-                <span className="text-green-400">${fmt(p.total)}</span>
+              <div key={p.person} className="group flex items-center justify-between text-sm gap-2">
+                <button
+                  onClick={() => navigate(`/transactions?person=${encodeURIComponent(p.person)}`)}
+                  className="text-gray-300 hover:text-white hover:underline text-left truncate"
+                >
+                  {p.person}
+                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-green-400">${fmt(p.total)}</span>
+                  <button
+                    onClick={() => settleMutation.mutate(p.person)}
+                    disabled={settleMutation.isPending}
+                    className="text-xs text-gray-500 hover:text-green-400 border border-gray-700 hover:border-green-600 rounded px-1.5 py-0.5 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    Mark paid
+                  </button>
+                </div>
               </div>
             ))}
             {totalOwed === 0 && <p className="text-gray-500 text-sm">No outstanding splits</p>}

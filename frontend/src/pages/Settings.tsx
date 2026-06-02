@@ -122,6 +122,7 @@ export default function Settings() {
   // CSV Import
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [showInternalTransfers, setShowInternalTransfers] = useState(false);
+  const [showHiddenTransactions, setShowHiddenTransactions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [filePreviews, setFilePreviews] = useState<FilePreview[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -184,6 +185,12 @@ export default function Settings() {
     enabled: showInternalTransfers,
   });
 
+  const { data: hiddenTransactionList } = useQuery({
+    queryKey: ['hidden-transactions'],
+    queryFn: transactions.hiddenTransactions,
+    enabled: showHiddenTransactions,
+  });
+
   const [exportState, setExportState] = useState<'idle' | 'loading' | 'done'>('idle');
 
   const handleExport = async () => {
@@ -207,6 +214,11 @@ export default function Settings() {
   const unmarkTransferMutation = useMutation({
     mutationFn: (id: number) => transactions.update(id, { isInternalTransfer: false }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['internal-transfers'] }),
+  });
+
+  const unhideMutation = useMutation({
+    mutationFn: (id: number) => transactions.update(id, { isHidden: false }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['hidden-transactions'] }),
   });
 
   return (
@@ -563,6 +575,48 @@ export default function Settings() {
                     title="Remove internal transfer flag"
                   >
                     Unmark
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Hidden Transactions */}
+      <section className="space-y-3">
+        <button
+          onClick={() => setShowHiddenTransactions(!showHiddenTransactions)}
+          className="flex items-center gap-2 text-base font-semibold text-white w-full text-left"
+        >
+          {showHiddenTransactions ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          Hidden Transactions
+        </button>
+
+        {showHiddenTransactions && (
+          <div className="bg-gray-900 rounded-lg divide-y divide-gray-800">
+            {hiddenTransactionList?.length === 0 && (
+              <p className="text-gray-500 text-sm p-4">No hidden transactions found.</p>
+            )}
+            {hiddenTransactionList?.map((tx: any) => (
+              <div key={tx.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-sm text-white">{tx.merchantNormalized}</p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(tx.date).toLocaleDateString()} · {tx.account?.name}
+                    {tx.category && <span> · {tx.category.name}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm font-medium ${Number(tx.amount) < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {Number(tx.amount) < 0 ? '-' : '+'}${fmt(Math.abs(Number(tx.amount)))}
+                  </span>
+                  <button
+                    onClick={() => unhideMutation.mutate(tx.id)}
+                    className="text-xs text-gray-500 hover:text-green-400 transition-colors"
+                    title="Unhide transaction"
+                  >
+                    Unhide
                   </button>
                 </div>
               </div>

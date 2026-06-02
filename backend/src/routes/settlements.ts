@@ -8,14 +8,14 @@ const prisma = new PrismaClient();
 router.get('/pending', asyncHandler(async (_req: Request, res: Response) => {
   const [splits, reimbursements] = await Promise.all([
     prisma.transactionSplit.findMany({
-      where: { settlementId: null },
+      where: { settlementId: null, transaction: { isHidden: false } },
       include: {
         transaction: { select: { date: true, merchantNormalized: true, amount: true } },
       },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.transaction.findMany({
-      where: { reimbursedBy: { not: null } },
+      where: { reimbursedBy: { not: null }, isHidden: false },
       select: { reimbursedBy: true, amount: true },
     }),
   ]);

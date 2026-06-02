@@ -4,7 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { transactions, categories, accounts, savings } from '../lib/api';
 import { fmt } from '../lib/format';
 import { useMonthContext } from '../lib/MonthContext';
-import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag, ChevronDown, ArrowLeft } from 'lucide-react';
+import { X, SplitSquareHorizontal, RefreshCw, ArrowLeftRight, SlidersHorizontal, ArrowUpDown, Tag, ChevronDown, ArrowLeft, EyeOff, Plus } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: 'date_desc',   label: 'Newest first' },
@@ -15,7 +15,7 @@ const SORT_OPTIONS = [
 ];
 
 const EMPTY_FILTERS = {
-  search: '', accountId: '', categoryId: '',
+  search: '', accountId: '', categoryId: '', person: '',
   minAmount: '', maxAmount: '',
 };
 
@@ -33,12 +33,14 @@ export default function Transactions() {
   const navigate = useNavigate();
   const fromBudget = searchParams.get('from') === 'budget';
   const paramCategoryId = searchParams.get('categoryId') ?? '';
+  const paramPerson = searchParams.get('person') ?? '';
   const paramMonth = searchParams.get('month');
   const paramYear = searchParams.get('year');
 
   const [selected, setSelected] = useState<any>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [sort, setSort] = useState('date_desc');
-  const [filters, setFilters] = useState({ ...EMPTY_FILTERS, categoryId: paramCategoryId });
+  const [filters, setFilters] = useState({ ...EMPTY_FILTERS, categoryId: paramCategoryId, person: paramPerson });
   const { dateRange, setDateRange } = useMonthContext();
 
   // When navigating from budget, lock the date range to that month
@@ -96,6 +98,11 @@ export default function Transactions() {
       } else if (filters.categoryId && tx.categoryId !== parseInt(filters.categoryId)) return false;
       if (filters.minAmount && Math.abs(Number(tx.amount)) < parseFloat(filters.minAmount)) return false;
       if (filters.maxAmount && Math.abs(Number(tx.amount)) > parseFloat(filters.maxAmount)) return false;
+      if (filters.person) {
+        const matchesSplit = tx.splits?.some((s: any) => s.owedBy === filters.person);
+        const matchesReimbursed = tx.reimbursedBy === filters.person;
+        if (!matchesSplit && !matchesReimbursed) return false;
+      }
       return true;
     })
     .sort((a: any, b: any) => {
@@ -116,6 +123,14 @@ export default function Transactions() {
   const { data: accountList = [] } = useQuery({
     queryKey: ['accounts'],
     queryFn: accounts.list,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: object) => transactions.create(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      setShowAddForm(false);
+    },
   });
 
   const updateMutation = useMutation({
@@ -191,6 +206,16 @@ export default function Transactions() {
             <ArrowLeft size={15} /> Back to Budget
           </button>
         )}
+        {filters.person && (
+          <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+            <button onClick={() => navigate('/')} className="flex items-center gap-1.5 hover:text-white transition-colors">
+              <ArrowLeft size={15} /> Back to Dashboard
+            </button>
+            <span className="text-gray-600">·</span>
+            <span>Splits with <span className="text-white font-medium">{filters.person}</span></span>
+            <button onClick={() => setFilters(f => ({ ...f, person: '' }))} className="text-gray-600 hover:text-red-400 ml-1"><X size={13} /></button>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold shrink-0">Transactions</h2>
           <input
@@ -235,6 +260,14 @@ export default function Transactions() {
             >
               <SlidersHorizontal size={13} />
               Filters{activeFilterCount > 0 && ` (${activeFilterCount})`}
+            </button>
+
+            {/* Add transaction button */}
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Plus size={13} /> Add
             </button>
           </div>
         </div>
@@ -312,7 +345,13 @@ export default function Transactions() {
                                 Remove category
                               </button>
                             )}
-                            {categoryList
+                            {[...categoryList]
+                              .sort((a: any, b: any) => {
+                                const aSpecial = a.isFromSavings || a.isReimbursement;
+                                const bSpecial = b.isFromSavings || b.isReimbursement;
+                                if (aSpecial !== bSpecial) return aSpecial ? 1 : -1;
+                                return a.name.localeCompare(b.name);
+                              })
                               .filter((c: any) => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()))
                               .map((c: any) => (
                                 <button
@@ -461,6 +500,180 @@ export default function Transactions() {
           </div>
         </div>
       )}
+
+      {showAddForm && (
+        <AddTransactionModal
+          categoryList={categoryList}
+          accountList={accountList}
+          onClose={() => setShowAddForm(false)}
+          onSubmit={(data) => createMutation.mutate(data)}
+          isPending={createMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddTransactionModal({ categoryList, accountList, onClose, onSubmit, isPending }: {
+  categoryList: any[];
+  accountList: any[];
+  onClose: () => void;
+  onSubmit: (data: object) => void;
+  isPending: boolean;
+}) {
+  const today = new Date().toISOString().split('T')[0];
+  const [form, setForm] = useState({
+    date: today,
+    amount: '',
+    isExpense: true,
+    merchant: '',
+    accountId: '',
+    categoryId: '',
+    notes: '',
+  });
+
+  const flatCategories = [...categoryList]
+    .sort((a: any, b: any) => {
+      const aSpecial = a.isFromSavings || a.isReimbursement;
+      const bSpecial = b.isFromSavings || b.isReimbursement;
+      if (aSpecial !== bSpecial) return aSpecial ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    })
+    .flatMap((c: any) => {
+      const sortedChildren = [...(c.children ?? [])].sort((a: any, b: any) => a.name.localeCompare(b.name));
+      return sortedChildren.length ? [c, ...sortedChildren] : [c];
+    });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.accountId || !form.merchant.trim() || !form.amount || !form.date) return;
+    const signed = parseFloat(form.amount) * (form.isExpense ? -1 : 1);
+    onSubmit({
+      accountId: form.accountId,
+      date: form.date,
+      amount: signed,
+      merchant: form.merchant.trim(),
+      categoryId: form.categoryId || undefined,
+      notes: form.notes || undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-20" onClick={onClose}>
+      <div className="bg-gray-900 rounded-xl p-6 w-96 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-white">Add Transaction</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={16} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Expense / Income toggle */}
+          <div className="flex rounded overflow-hidden border border-gray-700 text-sm">
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, isExpense: true }))}
+              className={`flex-1 py-1.5 transition-colors ${form.isExpense ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+            >
+              Expense
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, isExpense: false }))}
+              className={`flex-1 py-1.5 transition-colors ${!form.isExpense ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+            >
+              Income
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Date</label>
+              <input
+                type="date"
+                required
+                value={form.date}
+                onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Amount</label>
+              <input
+                type="number"
+                required
+                min="0.01"
+                step="0.01"
+                placeholder="0.00"
+                value={form.amount}
+                onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Merchant / Description</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Grocery Store"
+              value={form.merchant}
+              onChange={(e) => setForm((f) => ({ ...f, merchant: e.target.value }))}
+              className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Account</label>
+            <select
+              required
+              value={form.accountId}
+              onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
+              className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full"
+            >
+              <option value="">Select account...</option>
+              {accountList.map((a: any) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Category <span className="text-gray-600">(optional)</span></label>
+            <select
+              value={form.categoryId}
+              onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
+              className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full"
+            >
+              <option value="">Uncategorized</option>
+              {flatCategories.map((c: any) => (
+                <option key={c.id} value={c.id}>
+                  {c.parentId ? `  ${c.name}` : c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Notes <span className="text-gray-600">(optional)</span></label>
+            <input
+              type="text"
+              placeholder=""
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              className="bg-gray-800 text-white rounded px-3 py-2 text-sm w-full"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isPending}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded text-sm font-medium mt-1"
+          >
+            {isPending ? 'Adding…' : 'Add Transaction'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -478,9 +691,17 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
   const { data: savingsData } = useQuery({ queryKey: ['savings'], queryFn: savings.list });
   const savingsGoals: any[] = savingsData?.goals ?? [];
 
-  const flatCategories = categoryList.flatMap((c: any) =>
-    c.children?.length ? [c, ...c.children] : [c]
-  );
+  const flatCategories = [...categoryList]
+    .sort((a: any, b: any) => {
+      const aSpecial = a.isFromSavings || a.isReimbursement;
+      const bSpecial = b.isFromSavings || b.isReimbursement;
+      if (aSpecial !== bSpecial) return aSpecial ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    })
+    .flatMap((c: any) => {
+      const sortedChildren = [...(c.children ?? [])].sort((a: any, b: any) => a.name.localeCompare(b.name));
+      return sortedChildren.length ? [c, ...sortedChildren] : [c];
+    });
 
   const [splitWays, setSplitWays] = useState('');
   const [customAmount, setCustomAmount] = useState('');
@@ -510,7 +731,7 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
       const rect = splitDropdownRef.current.getBoundingClientRect();
       setSplitDropdownCoords({ top: rect.bottom + 4, left: rect.left });
     }
-    setShowSplitOptions(s => !s);
+    setShowSplitOptions((s) => !s);
   };
 
   const totalSplit = tx.splits?.reduce((sum: number, s: any) => sum + Number(s.amount), 0) ?? 0;
@@ -619,6 +840,14 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
           />
           <ArrowLeftRight size={13} className="text-gray-400" /> Internal transfer
         </label>
+        <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={tx.isHidden ?? false}
+            onChange={(e) => onUpdate({ isHidden: e.target.checked })}
+          />
+          <EyeOff size={13} className="text-gray-400" /> Hidden (exclude from budget)
+        </label>
       </div>
 
       <div>
@@ -690,8 +919,13 @@ function TransactionDetail({ tx, categoryList, onClose, onUpdate, onAddSplit, on
             {showSplitOptions && splitDropdownCoords && (
               <div
                 ref={splitListRef}
-                style={{ position: 'fixed', top: splitDropdownCoords.top, left: splitDropdownCoords.left }}
-                className="bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50 py-1 w-32"
+                style={{
+                  position: 'fixed',
+                  top: splitDropdownCoords.top,
+                  left: splitDropdownCoords.left,
+                  maxHeight: `${window.innerHeight - splitDropdownCoords.top - 8}px`,
+                }}
+                className="bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50 py-1 w-32 overflow-y-auto"
               >
                 <button
                   onClick={() => { setSplitWays(''); setCustomAmount(''); setShowSplitOptions(false); }}
