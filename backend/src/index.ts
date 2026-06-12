@@ -17,6 +17,18 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const prisma = new PrismaClient();
 
+async function runMigrations() {
+  // Applies schema changes to existing user databases on startup.
+  // Pattern: check PRAGMA table_info for the column, add it if missing.
+  // Add a new block here whenever a column is added to schema.prisma.
+  const txCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info(transactions)`);
+  const txColNames = txCols.map((c) => c.name);
+
+  if (!txColNames.includes('isHidden')) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE transactions ADD COLUMN isHidden BOOLEAN NOT NULL DEFAULT 0`);
+  }
+}
+
 async function seedRequiredCategories() {
   await prisma.category.upsert({
     where: { name: 'Reimbursement' },
@@ -48,6 +60,7 @@ app.use('/api/export', exportRoutes);
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
 app.listen(PORT, async () => {
+  await runMigrations();
   await seedRequiredCategories();
   console.log(`Backend running on port ${PORT}`);
 });

@@ -440,7 +440,7 @@ export default function Settings() {
                 </div>
                 {staleInfo && (
                   <p className="text-xs text-yellow-600">
-                    Not updated in {staleInfo.daysStale} day{staleInfo.daysStale !== 1 ? 's' : ''} — re-authorize this account in SimpleFIN Bridge
+                    Not updated in {staleInfo.daysStale} day{staleInfo.daysStale !== 1 ? 's' : ''} — account may have disconnected from SimpleFIN Bridge
                   </p>
                 )}
               </div>

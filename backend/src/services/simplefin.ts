@@ -149,7 +149,7 @@ export async function testConnection(): Promise<{
 
     // Collect stale accounts separately — staleness is a bank-side issue, not a connection failure
     const now = Date.now();
-    const staleThresholdMs = 3 * 24 * 60 * 60 * 1000;
+    const staleThresholdMs = 30 * 24 * 60 * 60 * 1000;
     const staleAccounts = accounts
       .filter(a => {
         const balanceAge = now - a['balance-date'] * 1000;
